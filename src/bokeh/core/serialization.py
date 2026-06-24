@@ -198,7 +198,7 @@ class Serializable:
         raise NotImplementedError()
 
 ObjID = int
-ModelIDPolicy: TypeAlias = Literal["always", "minimal"]
+type ModelIDPolicy = Literal["always", "minimal"]
 
 class Serializer:
     """ Convert built-in and custom types into serializable representations.
