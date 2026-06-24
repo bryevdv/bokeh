@@ -55,6 +55,7 @@ from ..core.has_props import is_DataModel
 from ..core.query import find, is_single_string_selector
 from ..core.serialization import (
     Deserializer,
+    ModelIDPolicy,
     Serialized,
     Serializer,
     UnknownReferenceError,
@@ -69,6 +70,10 @@ from ..themes import (
 )
 from ..util.serialization import make_id
 from ..util.version import __version__
+from ..model.util import (
+    visit_immediate_value_references,
+    visit_value_and_its_immediate_references,
+)
 from .callbacks import (
     Callback,
     DocumentCallbackManager,
@@ -115,6 +120,54 @@ __all__ = (
 
 def _no_op_callback() -> None:
     pass
+
+def _models_with_ids(values: Iterable[Any]) -> set[Model]:
+    counts: dict[Model, int] = {}
+    children: dict[Model, list[Model]] = {}
+
+    def count(model: Model) -> None:
+        counts[model] = counts.get(model, 0) + 1
+
+    for value in values:
+        visit_value_and_its_immediate_references(value, count)
+
+    queue = list(counts)
+    seen: set[Model] = set()
+    while queue:
+        model = queue.pop(0)
+        if model in seen:
+            continue
+
+        seen.add(model)
+        refs: list[Model] = []
+        visit_immediate_value_references(model, refs.append)
+        children[model] = refs
+        for ref in refs:
+            counts[ref] = counts.get(ref, 0) + 1
+            queue.append(ref)
+
+    cyclic: set[Model] = set()
+    visiting: set[Model] = set()
+    visited: set[Model] = set()
+
+    def visit(model: Model) -> None:
+        if model in visiting:
+            cyclic.update(visiting)
+            cyclic.add(model)
+            return
+        if model in visited:
+            return
+
+        visiting.add(model)
+        for ref in children.get(model, []):
+            visit(ref)
+        visiting.remove(model)
+        visited.add(model)
+
+    for model in list(counts):
+        visit(model)
+
+    return {model for model, count in counts.items() if count > 1} | cyclic
 
 #-----------------------------------------------------------------------------
 # General API
@@ -848,11 +901,11 @@ side of a communications channel while it was being removed on the other end.\
             self.callbacks.trigger_on_change(TitleChangedEvent(self, title, setter))
 
     @overload
-    def to_json(self, *, deferred: Literal[True] = ...) -> Serialized[DocJson]: ...
+    def to_json(self, *, deferred: Literal[True] = ..., model_ids: ModelIDPolicy = ...) -> Serialized[DocJson]: ...
     @overload
-    def to_json(self, *, deferred: Literal[False]) -> DocJson: ...
+    def to_json(self, *, deferred: Literal[False], model_ids: ModelIDPolicy = ...) -> DocJson: ...
 
-    def to_json(self, *, deferred: bool = True) -> DocJson | Serialized[DocJson]:
+    def to_json(self, *, deferred: bool = True, model_ids: ModelIDPolicy = "always") -> DocJson | Serialized[DocJson]:
         ''' Convert this document to a serialized representation.
 
         .. note::
@@ -881,7 +934,8 @@ side of a communications channel while it was being removed on the other end.\
 
         data_models = [ model for model in Model.model_class_reverse_map.values() if is_DataModel(model) ]
 
-        serializer = Serializer(deferred=deferred)
+        models_with_ids = _models_with_ids([self._config, self._roots, self.callbacks.js_event_callbacks]) if model_ids == "minimal" else set()
+        serializer = Serializer(deferred=deferred, model_ids=model_ids, models_with_ids=models_with_ids)
         defs = serializer.encode(data_models)
         config = serializer.encode(self._config)
         roots = serializer.encode(self._roots)
