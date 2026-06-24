@@ -748,7 +748,7 @@ class TestSerializer:
         doc.add_root(val0)
         doc.add_root(val1)
 
-        rep = doc.to_json(deferred=False, model_ids="minimal")
+        rep = doc._to_json(deferred=False, model_ids="minimal")
 
         assert "id" not in rep["roots"][0]
         assert "id" not in rep["roots"][1]
