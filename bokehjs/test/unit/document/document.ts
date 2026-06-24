@@ -702,6 +702,7 @@ describe("Document", () => {
 
     const json = d.to_json_string()
     const parsed = JSON.parse(json)
+    expect("id" in parsed.roots[0]).to.be.true
     parsed.version = js_version
     const copy = Document.from_json_string(JSON.stringify(parsed))
 
@@ -753,7 +754,7 @@ describe("Document", () => {
     const root = SomeModel.create({foo: 10})
     d.add_root(root)
 
-    const json = d.to_json(false, "minimal")
+    const json = d._to_json(false, "minimal")
     expect("id" in json.config!).to.be.false
     expect("id" in json.roots[0]).to.be.false
 
@@ -772,7 +773,7 @@ describe("Document", () => {
     d.add_root(root0)
     d.add_root(root1)
 
-    const json = d.to_json(false, "minimal")
+    const json = d._to_json(false, "minimal")
     expect("id" in json.roots[0]).to.be.false
     expect("id" in json.roots[1]).to.be.false
     expect(json.roots[0].attributes!.child).to.be.equal({
