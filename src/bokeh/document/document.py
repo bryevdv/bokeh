@@ -72,7 +72,6 @@ from ..util.serialization import make_id
 from ..util.version import __version__
 from ..model.util import (
     visit_immediate_value_references,
-    visit_value_and_its_immediate_references,
 )
 from .callbacks import (
     Callback,
@@ -129,7 +128,7 @@ def _models_with_ids(values: Iterable[Any]) -> set[Model]:
         counts[model] = counts.get(model, 0) + 1
 
     for value in values:
-        visit_value_and_its_immediate_references(value, count)
+        visit_immediate_value_references(value, count)
 
     queue = list(counts)
     seen: set[Model] = set()
@@ -901,11 +900,11 @@ side of a communications channel while it was being removed on the other end.\
             self.callbacks.trigger_on_change(TitleChangedEvent(self, title, setter))
 
     @overload
-    def to_json(self, *, deferred: Literal[True] = ..., model_ids: ModelIDPolicy = ...) -> Serialized[DocJson]: ...
+    def to_json(self, *, deferred: Literal[True] = ...) -> Serialized[DocJson]: ...
     @overload
-    def to_json(self, *, deferred: Literal[False], model_ids: ModelIDPolicy = ...) -> DocJson: ...
+    def to_json(self, *, deferred: Literal[False]) -> DocJson: ...
 
-    def to_json(self, *, deferred: bool = True, model_ids: ModelIDPolicy = "always") -> DocJson | Serialized[DocJson]:
+    def to_json(self, *, deferred: bool = True) -> DocJson | Serialized[DocJson]:
         ''' Convert this document to a serialized representation.
 
         .. note::
@@ -929,12 +928,25 @@ side of a communications channel while it was being removed on the other end.\
             Serialized[DocJson] | DocJson
 
         '''
+        return self._to_json(deferred=deferred)
+
+    @overload
+    def _to_json(self, *, deferred: Literal[True] = ..., model_ids: ModelIDPolicy = ...,
+            extra_models_with_ids: Iterable[Model] = ...) -> Serialized[DocJson]: ...
+    @overload
+    def _to_json(self, *, deferred: Literal[False], model_ids: ModelIDPolicy = ...,
+            extra_models_with_ids: Iterable[Model] = ...) -> DocJson: ...
+
+    def _to_json(self, *, deferred: bool = True, model_ids: ModelIDPolicy = "always",
+            extra_models_with_ids: Iterable[Model] = ()) -> DocJson | Serialized[DocJson]:
         from ..model import Model
         from .json import DocJson
 
         data_models = [ model for model in Model.model_class_reverse_map.values() if is_DataModel(model) ]
 
-        models_with_ids = _models_with_ids([self._config, self._roots, self.callbacks.js_event_callbacks]) if model_ids == "minimal" else set()
+        models_with_ids = (
+            _models_with_ids([self._config, self._roots, self.callbacks.js_event_callbacks]) | set(extra_models_with_ids)
+        ) if model_ids == "minimal" else set()
         serializer = Serializer(deferred=deferred, model_ids=model_ids, models_with_ids=models_with_ids)
         defs = serializer.encode(data_models)
         config = serializer.encode(self._config)
