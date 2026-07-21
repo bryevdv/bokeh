@@ -15,6 +15,21 @@ function make_wrapper(
 }
 
 describe("ReglWrapper", () => {
+  it("should finish pending draw commands before a cross-canvas read", () => {
+    const wrapper = Object.create(ReglWrapper.prototype) as ReglWrapper
+    const calls: string[] = []
+    const state = wrapper as unknown as {
+      _batcher: {flush(): void}
+      _regl: {_gl: {finish(): void}}
+    }
+    state._batcher = {flush: () => calls.push("draw")}
+    state._regl = {_gl: {finish: () => calls.push("finish")}}
+
+    wrapper.finish()
+
+    expect(calls).to.be.equal(["draw", "finish"])
+  })
+
   it("should bound and frame-clip a partly out-of-frame ring", () => {
     const wrapper = make_wrapper()
 
