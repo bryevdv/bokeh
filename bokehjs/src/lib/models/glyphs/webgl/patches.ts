@@ -13,6 +13,7 @@ import {normalize_dash_pattern} from "./dash_cache"
 import {LINE_AA_WIDTH, LINE_MITER_LIMIT, line_bounds_padding} from "./base_line"
 import {split_rings, classify_rings, build_line_from_ring, generate_skirt_geometry, POLYGON_AA_WIDTH} from "core/util/polygon"
 import type {SkirtGeometry, RingLineData} from "core/util/polygon"
+import type {Arrayable} from "core/types"
 import earcut from "earcut"
 
 type PolygonData = {
@@ -28,6 +29,7 @@ type PolygonData = {
 
 type GroupTopology = {
   ring_indices: number[]
+  ring_lengths: number[]
   tri_indices: number[]
 }
 
@@ -83,11 +85,20 @@ export class PatchesGL extends BaseGLGlyph {
   _poly_data?: PolygonData
 
   private _pv_dirty = true
+  private _layout_revision = 0
+  private _pv_layout_revision = -1
   private _topology?: (GroupTopology[] | null)[]
   private _elements_signature: string = ""
 
   constructor(regl_wrapper: ReglWrapper, override readonly glyph: PatchesView) {
     super(regl_wrapper, glyph)
+  }
+
+  protected _screen_coordinates(): {
+    sxs: {get(index: number): Arrayable<number>}
+    sys: {get(index: number): Arrayable<number>}
+  } {
+    return this.glyph
   }
 
   // Issues one fill draw call per selected polygon and one stroke draw call
@@ -126,6 +137,9 @@ export class PatchesGL extends BaseGLGlyph {
     const {width, height} = transform
     const canvas_size: [number, number] = [width, height]
     const poly_data = main_gl._poly_data
+    if (this._pv_layout_revision != main_gl._layout_revision) {
+      this._pv_dirty = true
+    }
 
     // Expand visual buffers to per-vertex when visuals or data changed
     if (this._pv_dirty && poly_data.fill_nvertices.length > 0) {
@@ -138,6 +152,7 @@ export class PatchesGL extends BaseGLGlyph {
         expand_to_per_vertex(this._hatch_rgba, this._pv_hatch_rgba, vertex_counts, 4)
       }
       this._pv_dirty = false
+      this._pv_layout_revision = main_gl._layout_revision
     }
 
     // Fill pass - draw each polygon separately to respect selection indices
@@ -298,7 +313,7 @@ export class PatchesGL extends BaseGLGlyph {
   }
 
   _set_data(data_changed: boolean = true): void {
-    const {sxs, sys} = this.glyph
+    const {sxs, sys} = this._screen_coordinates()
     const npoly = this.glyph.data_size
     const topology_changed = data_changed || this._topology == null || this._topology.length != npoly
     let elements_changed = topology_changed
@@ -336,8 +351,10 @@ export class PatchesGL extends BaseGLGlyph {
 
       if (rings.length > 0) {
         let topology = this._topology![i]
-        if (topology_changed || topology == null || topology.some(({ring_indices}) =>
-          ring_indices.some((index) => index >= rings.length))) {
+        const topology_ring_count = topology?.reduce((total, {ring_indices}) => total + ring_indices.length, 0)
+        if (topology_changed || topology == null || topology_ring_count != rings.length ||
+            topology.some(({ring_indices, ring_lengths}) =>
+              ring_indices.some((index, r) => index >= rings.length || rings[index].length != ring_lengths[r]))) {
           elements_changed = true
           const groups = classify_rings(rings)
           topology = groups.map(({flat_coords, rings: group_rings}) => {
@@ -351,7 +368,8 @@ export class PatchesGL extends BaseGLGlyph {
               offset += group_rings[r].length / 2
             }
             const tri_indices = earcut(flat_coords, hole_indices.length > 0 ? hole_indices : undefined, 2)
-            return {ring_indices, tri_indices}
+            const ring_lengths = group_rings.map((ring) => ring.length)
+            return {ring_indices, ring_lengths, tri_indices}
           })
           this._topology![i] = topology
         }
@@ -443,6 +461,12 @@ export class PatchesGL extends BaseGLGlyph {
         }
       }
       line_rings[i] = ring_line_data
+    }
+
+    const previous_vertex_counts = this._poly_data?.fill_nvertices
+    if (previous_vertex_counts == null || previous_vertex_counts.length != fill_nvertices.length ||
+        previous_vertex_counts.some((count, i) => count != fill_nvertices[i])) {
+      this._layout_revision++
     }
 
     this._poly_data = {
