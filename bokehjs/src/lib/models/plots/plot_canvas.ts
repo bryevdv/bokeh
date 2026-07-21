@@ -1299,6 +1299,7 @@ export class PlotView extends LayoutDOMView implements Paintable {
 
   protected _paint_primary(ctx: Context2d): void {
     const frame_box = this.frame.bbox
+    this.canvas_view.reset_webgl_stats()
     this.canvas_view.prepare_webgl(frame_box)
 
     this._paint_empty(ctx, frame_box)
@@ -1309,11 +1310,14 @@ export class PlotView extends LayoutDOMView implements Paintable {
     this._paint_levels(ctx, "glyph", frame_box, true)
     this._paint_levels(ctx, "guide", frame_box, false)
     this._paint_levels(ctx, "annotation", frame_box, false)
+    this.canvas_view.blit_webgl(ctx)
   }
 
   protected _paint_overlays(ctx: Context2d): void {
     const frame_box = this.frame.bbox
+    this.canvas_view.prepare_webgl(frame_box)
     this._paint_levels(ctx, "overlay", frame_box, false)
+    this.canvas_view.blit_webgl(ctx)
     if (settings.wireframe) {
       this.paint_layout(ctx, this.layout)
     }
@@ -1323,6 +1327,10 @@ export class PlotView extends LayoutDOMView implements Paintable {
     for (const renderer_view of this.computed_renderer_views) {
       if (renderer_view.model.level != level) {
         continue
+      }
+
+      if (!renderer_view.has_webgl) {
+        this.canvas_view.blit_webgl(ctx)
       }
 
       ctx.save()
@@ -1335,9 +1343,6 @@ export class PlotView extends LayoutDOMView implements Paintable {
       renderer_view.paint(ctx)
       ctx.restore()
 
-      if (renderer_view.has_webgl) {
-        this.canvas_view.blit_webgl(ctx)
-      }
     }
   }
 
