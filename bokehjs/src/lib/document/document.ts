@@ -90,7 +90,7 @@ function immediate_refs(value: unknown): HasProps[] {
     has(_ref: HasProps): boolean {
       return false
     },
-  } as Set<HasProps>
+  }
   HasProps._value_record_references(value, collector, {recursive: false})
   return refs
 }
