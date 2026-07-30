@@ -121,8 +121,8 @@ function models_with_ids(values: unknown[]): Set<HasProps> {
 
   const queue = [...counts.keys()]
   const seen: Set<HasProps> = new Set()
-  while (queue.length != 0) {
-    const model = queue.shift()!
+  for (let i = 0; i < queue.length; i++) {
+    const model = queue[i]
     if (seen.has(model)) {
       continue
     }
@@ -137,15 +137,16 @@ function models_with_ids(values: unknown[]): Set<HasProps> {
   }
 
   const cyclic: Set<HasProps> = new Set()
+  const stack: HasProps[] = []
   const visiting: Set<HasProps> = new Set()
   const visited: Set<HasProps> = new Set()
 
   function visit(model: HasProps): void {
     if (visiting.has(model)) {
-      for (const ref of visiting) {
+      const index = stack.indexOf(model)
+      for (const ref of stack.slice(index)) {
         cyclic.add(ref)
       }
-      cyclic.add(model)
       return
     }
     if (visited.has(model)) {
@@ -153,9 +154,11 @@ function models_with_ids(values: unknown[]): Set<HasProps> {
     }
 
     visiting.add(model)
+    stack.push(model)
     for (const ref of children.get(model) ?? []) {
       visit(ref)
     }
+    stack.pop()
     visiting.delete(model)
     visited.add(model)
   }
