@@ -34,6 +34,7 @@ log = logging.getLogger(__name__)
 #-----------------------------------------------------------------------------
 
 # Standard library imports
+from collections import deque
 import gc
 import weakref
 from json import loads
@@ -130,10 +131,10 @@ def _models_with_ids(values: Iterable[Any]) -> set[Model]:
     for value in values:
         visit_immediate_value_references(value, count)
 
-    queue = list(counts)
+    queue = deque(counts)
     seen: set[Model] = set()
     while queue:
-        model = queue.pop(0)
+        model = queue.popleft()
         if model in seen:
             continue
 
@@ -146,20 +147,23 @@ def _models_with_ids(values: Iterable[Any]) -> set[Model]:
             queue.append(ref)
 
     cyclic: set[Model] = set()
+    stack: list[Model] = []
     visiting: set[Model] = set()
     visited: set[Model] = set()
 
     def visit(model: Model) -> None:
         if model in visiting:
-            cyclic.update(visiting)
-            cyclic.add(model)
+            index = stack.index(model)
+            cyclic.update(stack[index:])
             return
         if model in visited:
             return
 
         visiting.add(model)
+        stack.append(model)
         for ref in children.get(model, []):
             visit(ref)
+        stack.pop()
         visiting.remove(model)
         visited.add(model)
 
