@@ -726,7 +726,7 @@ class TestSerializer:
 
     def test_Model_minimal_ids_can_omit_id(self) -> None:
         val = SomeModel(p0=3, p1="b", p2=[4, 5, 6])
-        encoder = Serializer(model_ids="minimal")
+        encoder = Serializer(models_with_ids=set())
         rep = encoder.encode(val)
         assert rep == ObjectRep(
             type="object",
