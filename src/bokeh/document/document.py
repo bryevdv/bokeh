@@ -56,7 +56,6 @@ from ..core.has_props import is_DataModel
 from ..core.query import find, is_single_string_selector
 from ..core.serialization import (
     Deserializer,
-    ModelIDPolicy,
     Serialized,
     Serializer,
     UnknownReferenceError,
@@ -113,6 +112,7 @@ if TYPE_CHECKING:
 #-----------------------------------------------------------------------------
 
 DEFAULT_TITLE = "Bokeh Application"
+type ModelIDPolicy = Literal["always", "minimal"]
 
 __all__ = (
     'Document',
@@ -951,7 +951,7 @@ side of a communications channel while it was being removed on the other end.\
         models_with_ids = (
             _models_with_ids([self._config, self._roots, self.callbacks.js_event_callbacks]) | set(extra_models_with_ids)
         ) if model_ids == "minimal" else set()
-        serializer = Serializer(deferred=deferred, model_ids=model_ids, models_with_ids=models_with_ids)
+        serializer = Serializer(deferred=deferred, models_with_ids=models_with_ids if model_ids == "minimal" else None)
         defs = serializer.encode(data_models)
         config = serializer.encode(self._config)
         roots = serializer.encode(self._roots)
