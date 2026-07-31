@@ -6,6 +6,26 @@ import {union} from "core/util/set"
 import type {Slice} from "core/util/slice"
 import * as typed_array from "core/util/typed_array"
 
+export type StreamRange = {
+  readonly start: number
+  readonly end: number
+}
+
+/**
+ * Describes how a columnar source changed after a streaming update.
+ *
+ * `new_rows` counts rows from the streamed data that remain after rollover,
+ * while `removed_rows` counts rows removed from the previous source data.
+ * Affected ranges use half-open indices in the resulting source.
+ */
+export type StreamDelta = {
+  readonly old_length: number
+  readonly new_length: number
+  readonly new_rows: number
+  readonly removed_rows: number
+  readonly affected_ranges: readonly StreamRange[]
+}
+
 // exported for testing
 export function stream_to_column(col: Arrayable, new_col: Arrayable, rollover?: number): Arrayable {
   if (isArray(col) && isArray(new_col)) {
@@ -148,12 +168,38 @@ export function patch_to_column<T>(col: NDArray | NDArray[], patch: Patch<T>[]):
   return patched
 }
 
-export function stream_to_columns(old_data: Data, new_data: Data, rollover?: number): void {
+function columnar_data_length(data: Data): number {
+  for (const [, column] of dict(data)) {
+    return column.length
+  }
+  return 0
+}
+
+export function stream_to_columns(old_data: Data, new_data: Data, rollover?: number): StreamDelta {
+  const old_length = columnar_data_length(old_data)
+  const streamed_length = columnar_data_length(new_data)
   const data = dict(old_data)
   for (const [name, new_column] of dict(new_data)) {
     const old_column = data.get(name) ?? []
     data.set(name, stream_to_column(old_column, new_column, rollover))
   }
+
+  const new_length = columnar_data_length(old_data)
+  const new_rows = Math.min(streamed_length, new_length)
+  const removed_rows = Math.max(0, old_length + new_rows - new_length)
+  const affected_ranges = (() => {
+    if (new_length == 0) {
+      return []
+    } else if (removed_rows != 0) {
+      return [{start: 0, end: new_length}]
+    } else if (new_rows != 0) {
+      return [{start: new_length - new_rows, end: new_length}]
+    } else {
+      return []
+    }
+  })()
+
+  return {old_length, new_length, new_rows, removed_rows, affected_ranges}
 }
 
 export function patch_to_columns(old_data: Data, patches: PatchSet<unknown>): Set<number> {

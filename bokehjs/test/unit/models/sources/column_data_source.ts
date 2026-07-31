@@ -5,6 +5,7 @@ import {with_log_level} from "@bokehjs/core/logging"
 import {version} from "@bokehjs/version"
 
 import {keys} from "@bokehjs/core/util/object"
+import type {StreamDelta} from "@bokehjs/core/patching"
 import {ColumnDataSource} from "@bokehjs/models/sources/column_data_source"
 import {Int32NDArray, Float32NDArray, Float64NDArray, ndarray} from "@bokehjs/core/util/ndarray"
 
@@ -146,6 +147,25 @@ describe("column_data_source module", () => {
         r.clear()
         expect(r.data).to.be.equal({foo: [], bar: [], baz: new typ([])})
       }
+    })
+  })
+
+  describe("streaming signal", () => {
+
+    it("should emit the stream delta", () => {
+      const source = new ColumnDataSource({data: {foo: [1, 2, 3, 4, 5]}})
+      let delta: StreamDelta | undefined
+      source.streaming.connect((value) => delta = value)
+
+      source.stream({foo: [6, 7]}, 5)
+
+      expect(delta).to.be.equal({
+        old_length: 5,
+        new_length: 5,
+        new_rows: 2,
+        removed_rows: 2,
+        affected_ranges: [{start: 0, end: 5}],
+      })
     })
   })
 
