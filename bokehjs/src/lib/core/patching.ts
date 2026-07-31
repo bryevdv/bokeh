@@ -9,52 +9,48 @@ import * as typed_array from "core/util/typed_array"
 // exported for testing
 export function stream_to_column(col: Arrayable, new_col: Arrayable, rollover?: number): Arrayable {
   if (isArray(col) && isArray(new_col)) {
-    const result = col.concat(new_col)
-
-    if (rollover != null && result.length > rollover) {
-      return result.slice(-rollover)
-    } else {
+    const total_len = col.length + new_col.length
+    if (rollover != null && total_len > rollover) {
+      const nnew = Math.min(new_col.length, rollover)
+      const nold = rollover - nnew
+      const result = nold == 0 ? [] : col.slice(-nold)
+      const offset = new_col.length - nnew
+      for (let i = offset; i < new_col.length; i++) {
+        result.push(new_col[i])
+      }
       return result
     }
+    return col.concat(new_col)
   }
 
   const total_len = col.length + new_col.length
 
   // handle rollover case for typed arrays
   if (rollover != null && total_len > rollover) {
-    const start = total_len - rollover
-    const end = col.length
-
-    // resize col if it is shorter than the rollover length
-    const result = (() => {
-      if (col.length < rollover) {
-        const ctor = (() => {
-          if (isTypedArray(col)) {
-            return col.constructor
-          } else if (isTypedArray(new_col)) {
-            return new_col.constructor
-          } else {
-            throw new Error("unsupported array types")
-          }
-        })()
-
-        const result = new ctor(rollover)
-        result.set(col, 0)
-        return result
+    const ctor = (() => {
+      if (isTypedArray(col)) {
+        return col.constructor
+      } else if (isTypedArray(new_col)) {
+        return new_col.constructor
       } else {
-        return col
+        throw new Error("unsupported array types")
       }
     })()
 
-    // shift values in original col to accommodate new_col
-    for (let i = start, endi = end; i < endi; i++) {
-      result[i-start] = result[i]
+    const result = isTypedArray(col) && col.length == rollover ? col : new ctor(rollover)
+    const nnew = Math.min(new_col.length, rollover)
+    const nold = rollover - nnew
+
+    if (nold != 0) {
+      if (result === col) {
+        result.copyWithin(0, col.length - nold)
+      } else {
+        result.set(col.slice(col.length - nold), 0)
+      }
     }
 
-    // update end values in col with new_col
-    for (let i = 0, endi = new_col.length; i < endi; i++) {
-      result[i+(end-start)] = new_col[i]
-    }
+    const offset = new_col.length - nnew
+    result.set(offset == 0 ? new_col : new_col.slice(offset), nold)
 
     return result
   } else {
