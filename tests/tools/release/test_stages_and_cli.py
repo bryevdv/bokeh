@@ -355,7 +355,7 @@ def test_deploy_workflow_uses_isolated_publishers() -> None:
         "${{ (contains(github.event.inputs.version, '.dev') || contains(github.event.inputs.version, 'rc')) && 'dev' || 'latest' }}"
     )
     assert npm_publish["run"].splitlines() == [
-        "for package in bokeh-bokehjs bokeh-framework bokeh-react bokeh-svelte bokeh-vue bokeh-web-component; do",
+        "for package in bokeh-bokehjs bokeh-framework bokeh-angular bokeh-react bokeh-svelte bokeh-vue bokeh-web-component; do",
         '  npm publish --access=public --tag="$NPM_TAG" "$package"-*.tgz',
         "done",
     ]
