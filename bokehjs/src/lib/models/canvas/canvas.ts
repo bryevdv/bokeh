@@ -8,6 +8,7 @@ import {load_module} from "core/util/modules"
 import type {Context2d} from "core/util/canvas"
 import {CanvasLayer} from "core/util/canvas"
 import type {BBox} from "core/util/bbox"
+import type {Size} from "core/types"
 import {UIElement, UIElementView} from "../ui/ui_element"
 import type {PlotView} from "../plots/plot"
 import type {ReglWrapper} from "../glyphs/webgl/regl_wrap"
@@ -104,6 +105,7 @@ export class CanvasView extends UIElementView {
 
   webgl: WebGLState | null = null
   private _webgl_dirty: boolean = false
+  private _webgl_size: Size = {width: 0, height: 0}
   private readonly _webgl_compositor = new WebGLCompositor()
   private readonly _webgl_context_lost = (event: Event) => event.preventDefault()
   private readonly _webgl_context_restored = () => {
@@ -239,14 +241,17 @@ export class CanvasView extends UIElementView {
     const {webgl} = this
     if (webgl != null) {
       this._webgl_compositor.reset()
-      // Sync canvas size
+      // Grow the shared drawing buffer as needed, but never shrink it between
+      // plots. Resizing a WebGL canvas reallocates its drawing buffer, which is
+      // prohibitively expensive for grids containing differently sized plots.
       const {width, height} = this.bbox
       const canvas_width = Math.floor(this.pixel_ratio*width)
       const canvas_height = Math.floor(this.pixel_ratio*height)
-      if (webgl.canvas.width != canvas_width) {
+      this._webgl_size = {width: canvas_width, height: canvas_height}
+      if (webgl.canvas.width < canvas_width) {
         webgl.canvas.width = canvas_width
       }
-      if (webgl.canvas.height != canvas_height) {
+      if (webgl.canvas.height < canvas_height) {
         webgl.canvas.height = canvas_height
       }
       const {x: sx, y: sy, width: w, height: h} = frame_box
@@ -254,7 +259,10 @@ export class CanvasView extends UIElementView {
       const vx = xview.compute(sx)
       const vy = yview.compute(sy + h)
       const ratio = this.pixel_ratio
-      webgl.regl_wrapper.set_scissor(ratio*vx, ratio*vy, ratio*w, ratio*h)
+      // WebGL uses a bottom-left origin. Screen-coordinate shaders use the
+      // full retained canvas size, which anchors smaller plots at its top-left.
+      const y_offset = webgl.canvas.height - canvas_height
+      webgl.regl_wrapper.set_scissor(ratio*vx, y_offset + ratio*vy, ratio*w, ratio*h)
       this._clear_webgl()
       this._webgl_dirty = false
     }
@@ -296,14 +304,19 @@ export class CanvasView extends UIElementView {
     // This should be called when the ctx has no state except the HiDPI transform
     const {webgl} = this
     this.flush_webgl()
-    if (webgl != null && this._webgl_dirty && webgl.canvas.width*webgl.canvas.height > 0) {
+    const {width, height} = this._webgl_size
+    if (webgl != null && this._webgl_dirty && width*height > 0) {
       webgl.regl_wrapper.finish()
       // Blit gl canvas into the 2D canvas. To do 1-on-1 blitting, we need
       // to remove the HiDPI transform, then blit, then restore.
       // ctx.globalCompositeOperation = "source-over"  -> OK; is the default
       logger.debug("Blitting WebGL canvas")
       ctx.restore()
-      ctx.drawImage(webgl.canvas, 0, 0)
+      if (webgl.canvas.width == width && webgl.canvas.height == height) {
+        ctx.drawImage(webgl.canvas, 0, 0)
+      } else {
+        ctx.drawImage(webgl.canvas, 0, 0, width, height, 0, 0, width, height)
+      }
       // Set back the HiDPI transform
       ctx.save()
       const ratio = this.pixel_ratio
