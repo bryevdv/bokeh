@@ -123,13 +123,27 @@ vec2 enclosing_size() {
 
 void main()
 {
-#ifdef DATA_MAPPING
+#ifdef RECT_DATA_MAPPING
+  vec2 corner0 = bokeh_map_data(a_center);
+  vec2 corner1 = bokeh_map_data(vec2(a_width, a_height));
+  #ifdef ROUND_DATA_X
+    corner0.x = floor(corner0.x + 0.5);
+    corner1.x = floor(corner1.x + 0.5);
+  #endif
+  #ifdef ROUND_DATA_Y
+    corner0.y = floor(corner0.y + 0.5);
+    corner1.y = floor(corner1.y + 0.5);
+  #endif
+  vec2 center = 0.5*(corner0 + corner1);
+#elif defined(DATA_MAPPING)
   vec2 center = bokeh_map_data(a_center);
 #else
   vec2 center = a_center;
 #endif
 
-#if defined(USE_RECT) || defined(USE_ROUND_RECT) || defined(USE_HEX_TILE)
+#ifdef RECT_DATA_MAPPING
+  v_size = abs(corner1 - corner0);
+#elif defined(USE_RECT) || defined(USE_ROUND_RECT) || defined(USE_HEX_TILE)
   v_size = vec2(a_width, a_height);
 #elif defined(USE_ANNULUS) || defined(USE_ANNULAR_WEDGE) || defined(USE_WEDGE)
   v_size = vec2(2.0*a_width, 2.0*a_width);

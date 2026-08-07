@@ -120,6 +120,19 @@ void main()
     vec2 point_next = a_point_next;
 #endif
 
+#ifdef ROUND_DATA_X
+    point_prev.x = floor(point_prev.x + 0.5);
+    point_start.x = floor(point_start.x + 0.5);
+    point_end.x = floor(point_end.x + 0.5);
+    point_next.x = floor(point_next.x + 0.5);
+#endif
+#ifdef ROUND_DATA_Y
+    point_prev.y = floor(point_prev.y + 0.5);
+    point_start.y = floor(point_start.y + 0.5);
+    point_end.y = floor(point_end.y + 0.5);
+    point_next.y = floor(point_next.y + 0.5);
+#endif
+
     int join_type = int(a_line_join + 0.5);
     int cap_type = int(a_line_cap + 0.5);
 

@@ -239,7 +239,7 @@ describe("webgl", () => {
       })
     }
     p.text({
-      x: [10], y: [1.4], text: ["WebGL atlas batch"],
+      x: [10], y: [1.4], text: ["Canvas ordering barrier"],
       text_align: "center", text_font_size: "22px", text_color: "#dc2626",
     })
     for (let i = 0; i < 80; i++) {
@@ -265,8 +265,8 @@ describe("webgl", () => {
       expect(blue_pixels > 1000).to.be.true
 
       const {submitted, draw_calls} = view.canvas_view.webgl!.regl_wrapper.batch_stats
-      expect(submitted).to.be.equal(161)
-      expect(draw_calls).to.be.equal(3)
+      expect(submitted).to.be.equal(160)
+      expect(draw_calls).to.be.equal(2)
     } finally {
       settings.force_webgl = force_webgl
     }

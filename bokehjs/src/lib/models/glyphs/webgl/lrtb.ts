@@ -4,6 +4,7 @@ import {SingleMarkerGL} from "./single_marker"
 import type {GLMarkerType} from "./types"
 import type {Arrayable} from "core/types"
 import type {Corners} from "core/util/bbox"
+import type {StreamDelta} from "core/patching"
 
 type LRTBLikeView = SingleMarkerGlyphView & {
   sleft: Arrayable<number>
@@ -24,8 +25,73 @@ export class LRTBGL extends SingleMarkerGL {
     return this._border_radius_nonzero ? "round_rect" : "rect"
   }
 
+  protected can_stream_geometry(delta: StreamDelta, nmarkers: number): boolean {
+    return delta.old_length == nmarkers &&
+      delta.new_length == nmarkers &&
+      delta.new_rows == delta.removed_rows &&
+      delta.new_rows > 0 &&
+      this._centers.length == 2*nmarkers &&
+      this._widths.length == nmarkers &&
+      this._heights.length == nmarkers
+  }
+
+  protected set_border_radius(): void {
+    if (this.glyph.border_radius != null) {
+      const {top_left, top_right, bottom_right, bottom_left} = this.glyph.border_radius
+      this._border_radius = [top_left, top_right, bottom_right, bottom_left]
+      this._border_radius_nonzero = Math.max(...this._border_radius) > 0.0
+    } else {
+      this._border_radius = [0, 0, 0, 0]
+      this._border_radius_nonzero = false
+    }
+  }
+
+  protected stream_screen_geometry(delta: StreamDelta, nmarkers: number): boolean {
+    if (!this.can_stream_geometry(delta, nmarkers)) {
+      return false
+    }
+
+    const centers_array = this._centers.get_array()
+    const widths_array = this._widths.get_array()
+    const heights_array = this._heights.get_array()
+    centers_array.copyWithin(0, 2*delta.removed_rows)
+    widths_array.copyWithin(0, delta.removed_rows)
+    heights_array.copyWithin(0, delta.removed_rows)
+
+    const {sleft, sright, stop, sbottom} = this.glyph
+    const {missing_point} = SingleMarkerGL
+    const start = nmarkers - delta.new_rows
+    for (let i = start; i < nmarkers; i++) {
+      const l = sleft[i]
+      const r = sright[i]
+      const t = stop[i]
+      const b = sbottom[i]
+
+      if (isFinite(l + r + t + b)) {
+        centers_array[2*i] = (l + r)/2
+        centers_array[2*i+1] = (t + b)/2
+        widths_array[i] = abs(r - l)
+        heights_array[i] = abs(t - b)
+      } else {
+        centers_array[2*i] = missing_point
+        centers_array[2*i+1] = missing_point
+        widths_array[i] = missing_point
+        heights_array[i] = missing_point
+      }
+    }
+
+    this._centers.update()
+    this._widths.update()
+    this._heights.update()
+    return true
+  }
+
   protected override _set_data(): void {
     const nmarkers = this.nvertices
+    const delta = this.stream_delta
+    if (delta != null && this.stream_screen_geometry(delta, nmarkers)) {
+      return
+    }
 
     const centers_array = this._centers.get_sized_array(nmarkers*2)
     const widths_array = this._widths.get_sized_array(nmarkers)
@@ -59,14 +125,7 @@ export class LRTBGL extends SingleMarkerGL {
 
     this._angles.set_from_scalar(0)
 
-    if (this.glyph.border_radius != null) {
-      const {top_left, top_right, bottom_right, bottom_left} = this.glyph.border_radius
-      this._border_radius = [top_left, top_right, bottom_right, bottom_left]
-      this._border_radius_nonzero = Math.max(...this._border_radius) > 0.0
-    } else {
-      this._border_radius = [0, 0, 0, 0]
-      this._border_radius_nonzero = false
-    }
+    this.set_border_radius()
   }
 
   protected override _set_once(): void {

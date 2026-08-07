@@ -1,4 +1,5 @@
 import type {HitTestResult} from "core/hittest"
+import type {StreamDelta} from "core/patching"
 import * as p from "core/properties"
 import * as bbox from "core/util/bbox"
 import * as visuals from "core/visuals"
@@ -85,6 +86,7 @@ export abstract class GlyphView extends DOMComponentView {
 
   private _data_size: number | null = null
   private _screen_data_mapped: boolean = false
+  private _stream_delta: StreamDelta | null = null
 
   protected _nohit_warned: Set<geometry.Geometry["type"]> = new Set()
 
@@ -109,6 +111,10 @@ export abstract class GlyphView extends DOMComponentView {
         throw new Error(`${this}.set_data() wasn't called`)
       }
     }
+  }
+
+  protected get stream_delta(): StreamDelta | null {
+    return this._stream_delta
   }
 
   override initialize(): void {
@@ -504,10 +510,16 @@ export abstract class GlyphView extends DOMComponentView {
     return final_array
   }
 
-  async set_data(source: ColumnarDataSource, indices: Indices, indices_to_update?: number[]): Promise<void> {
+  async set_data(
+    source: ColumnarDataSource,
+    indices: Indices,
+    indices_to_update?: number[],
+    stream_delta: StreamDelta | null = null,
+  ): Promise<void> {
     const visuals = new Set(this._iter_visuals())
     const {base} = this
 
+    this._stream_delta = stream_delta
     this._screen_data_mapped = false
     this._data_size = indices.count
 
@@ -562,6 +574,7 @@ export abstract class GlyphView extends DOMComponentView {
     if (base == null) {
       this.index_data()
     }
+    this._stream_delta = null
   }
 
   protected _set_data(_indices: number[] | null): void {}
@@ -584,6 +597,10 @@ export abstract class GlyphView extends DOMComponentView {
     const index = new SpatialIndex(this._index_size)
     this._index_data(index)
     index.finish()
+    this._set_index(index)
+  }
+
+  protected _set_index(index: SpatialIndex): void {
     this._index = index
   }
 
@@ -623,7 +640,7 @@ export abstract class GlyphView extends DOMComponentView {
 
     for (const prop of this.model) {
       if (prop instanceof p.BaseCoordinateSpec) {
-        const gpu_mapped = gpu_data_mapping != null && (prop.attr == "x" || prop.attr == "y")
+        const gpu_mapped = gpu_data_mapping != null && this.glglyph!.maps_coordinate(prop.attr)
         if (gpu_mapped) {
           deferred_screen_data = true
           this._screen_data_mapped = false
@@ -641,7 +658,7 @@ export abstract class GlyphView extends DOMComponentView {
       }
     }
 
-    this._map_data()
+    this._map_data(force_cpu)
     if (!deferred_screen_data) {
       this._screen_data_mapped = true
     }
@@ -662,7 +679,7 @@ export abstract class GlyphView extends DOMComponentView {
   }
 
   // This is where specs not included in coords are computed, e.g. radius.
-  protected _map_data(): void {}
+  protected _map_data(_force_cpu: boolean = false): void {}
 
   override get bbox(): BBox | undefined {
     if (this.base == null) {

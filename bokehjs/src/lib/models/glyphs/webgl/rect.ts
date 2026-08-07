@@ -12,6 +12,13 @@ export class RectGL extends SXSYGlyphGL {
     return this._border_radius_nonzero ? "round_rect" : "rect"
   }
 
+  override maps_coordinate(_attr: string): boolean {
+    // Rect's CPU distance mapping needs its mapped center to calculate screen
+    // widths and heights. The center is nevertheless retained as data in the
+    // WebGL buffer and remapped by the shader.
+    return false
+  }
+
   protected override _set_data(): void {
     super._set_data()
 

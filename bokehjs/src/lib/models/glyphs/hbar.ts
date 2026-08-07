@@ -2,12 +2,23 @@ import {LRTB, LRTBView} from "./lrtb"
 import type {LRTBRect} from "./lrtb"
 import {ScreenArray} from "core/types"
 import * as p from "core/properties"
+import type {HBarGL} from "./webgl/hbar"
+import {HBarStreamIndex} from "./hbar_index"
 
 export interface HBarView extends HBar.Data {}
 
 export class HBarView extends LRTBView {
   declare model: HBar
   declare visuals: HBar.Visuals
+  private _stream_index: HBarStreamIndex | null = null
+
+  /** @internal */
+  declare glglyph?: HBarGL
+
+  override async load_glglyph() {
+    const {HBarGL} = await import("./webgl/hbar")
+    return HBarGL
+  }
 
   scenterxy(i: number): [number, number] {
     const scx = (this.sleft[i] + this.sright[i])/2
@@ -29,7 +40,35 @@ export class HBarView extends LRTBView {
     return {l, r, t, b}
   }
 
-  protected override _map_data(): void {
+  override index_data(): void {
+    if (!this.has_webgl()) {
+      this._stream_index = null
+      super.index_data()
+      return
+    }
+
+    const delta = this.stream_delta
+    if (delta != null && this._stream_index != null && this._stream_index.stream(delta)) {
+      this._set_index(this._stream_index)
+      return
+    }
+
+    this._stream_index = new HBarStreamIndex(
+      this.data_size,
+      (i) => {
+        const {l: x0, b: y0, r: x1, t: y1} = this._lrtb(i)
+        return {x0, y0, x1, y1}
+      },
+      (i) => this.y[i],
+    )
+    this._set_index(this._stream_index)
+  }
+
+  protected override _map_data(force_cpu: boolean = false): void {
+    if (!force_cpu && this.has_webgl() && this.glglyph.data_mapping != null) {
+      return
+    }
+
     if (this.inherited_y && this.inherited_height) {
       this._inherit_attr<HBar.Data>("sheight")
       this._inherit_attr<HBar.Data>("stop")

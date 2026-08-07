@@ -3,7 +3,7 @@ import {generic_line_vector_legend} from "./utils"
 import {Selection} from "../selections/selection"
 import {LineVector} from "core/property_mixins"
 import type {PointGeometry, SpanGeometry, RectGeometry} from "core/geometry"
-import type {Rect} from "core/types"
+import type {Arrayable, Rect} from "core/types"
 import type * as visuals from "core/visuals"
 import * as uniforms from "core/uniforms"
 import type {Context2d} from "core/util/canvas"
@@ -11,7 +11,7 @@ import type {SpatialIndex} from "core/util/spatial"
 import {map} from "core/util/arrayable"
 import {range} from "core/util/array"
 import * as p from "core/properties"
-import type {PathGL} from "./webgl/path"
+import type {HSpanGL} from "./webgl/span"
 import type {ScreenLine} from "./curve"
 
 const {abs, max} = Math
@@ -25,11 +25,51 @@ export class HSpanView extends GlyphView {
   declare visuals: HSpan.Visuals
 
   /** @internal */
-  declare glglyph?: PathGL
+  declare glglyph?: HSpanGL
 
   override async load_glglyph() {
-    const {PathGL} = await import("./webgl/path")
-    return PathGL
+    const {HSpanGL} = await import("./webgl/span")
+    return HSpanGL
+  }
+
+  get x0(): Arrayable<number> {
+    return new Float32Array(this.data_size)
+  }
+
+  get x1(): Arrayable<number> {
+    const x1 = new Float32Array(this.data_size)
+    x1.fill(1)
+    return x1
+  }
+
+  get y0(): Arrayable<number> {
+    return this.y
+  }
+
+  get y1(): Arrayable<number> {
+    return this.y
+  }
+
+  get sx0(): Arrayable<number> {
+    const {left} = this.renderer.plot_view.frame.bbox
+    const sx0 = new Float32Array(this.data_size)
+    sx0.fill(left)
+    return sx0
+  }
+
+  get sx1(): Arrayable<number> {
+    const {right} = this.renderer.plot_view.frame.bbox
+    const sx1 = new Float32Array(this.data_size)
+    sx1.fill(right)
+    return sx1
+  }
+
+  get sy0(): Arrayable<number> {
+    return this.sy
+  }
+
+  get sy1(): Arrayable<number> {
+    return this.sy
   }
 
   webgl_lines(): ScreenLine[] {

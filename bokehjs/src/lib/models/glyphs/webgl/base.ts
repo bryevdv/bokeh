@@ -8,6 +8,7 @@ import type {RevisionDomain} from "./revisions"
 import type {RevisionSnapshot} from "./revisions"
 import {RevisionState} from "./revisions"
 import type {DataMapping} from "./data_mapping"
+import type {StreamDelta} from "core/patching"
 
 export type BaseGLGlyphConstructor = {
   new(regl: ReglWrapper, base_glyph: GlyphView): BaseGLGlyph
@@ -17,6 +18,16 @@ export abstract class BaseGLGlyph {
   protected nvertices: number = 0
   private readonly _resources = new GPUResourceOwner()
   protected readonly revisions = new RevisionState()
+  private _stream_geometry_delta: StreamDelta | null = null
+  private _stream_visuals_delta: StreamDelta | null = null
+
+  protected get stream_delta(): StreamDelta | null {
+    return this._stream_geometry_delta
+  }
+
+  protected get stream_visuals_delta(): StreamDelta | null {
+    return this._stream_visuals_delta
+  }
 
   protected get data_changed(): boolean {
     return this.revisions.changed("geometry", "legacy-data")
@@ -66,6 +77,11 @@ export abstract class BaseGLGlyph {
     return null
   }
 
+  /** Coordinate specs consumed directly by this WebGL implementation. */
+  maps_coordinate(attr: string): boolean {
+    return attr == "x" || attr == "y"
+  }
+
   set_data_changed(): void {
     const {data_size} = this.glyph
     if (data_size != this.nvertices) {
@@ -80,6 +96,54 @@ export abstract class BaseGLGlyph {
 
   set_visuals_changed(): void {
     this.revisions.bump("visuals")
+  }
+
+  private _merge_streaming(previous: StreamDelta | null, delta: StreamDelta): StreamDelta {
+    if (previous == null || previous.new_length != delta.old_length) {
+      return delta
+    }
+
+    const previous_old_rows = previous.new_length - previous.new_rows
+    const previous_new_rows_removed = Math.max(0, delta.removed_rows - previous_old_rows)
+    const previous_new_rows = Math.max(0, previous.new_rows - previous_new_rows_removed)
+    const new_rows = Math.min(delta.new_length, previous_new_rows + delta.new_rows)
+    const removed_rows = Math.min(
+      previous.old_length,
+      previous.removed_rows + Math.min(delta.removed_rows, previous_old_rows),
+    )
+    const affected_ranges = delta.new_length == 0
+      ? []
+      : removed_rows != 0
+        ? [{start: 0, end: delta.new_length}]
+        : new_rows != 0
+          ? [{start: delta.new_length - new_rows, end: delta.new_length}]
+          : []
+
+    return {
+      old_length: previous.old_length,
+      new_length: delta.new_length,
+      new_rows,
+      removed_rows,
+      affected_ranges,
+    }
+  }
+
+  set_streaming(delta: StreamDelta): void {
+    this._stream_geometry_delta = this._merge_streaming(this._stream_geometry_delta, delta)
+    this._stream_visuals_delta = this._merge_streaming(this._stream_visuals_delta, delta)
+  }
+
+  protected consume_stream_geometry(): void {
+    this._stream_geometry_delta = null
+  }
+
+  protected consume_stream_visuals(): void {
+    this._stream_visuals_delta = null
+  }
+
+  clear_streaming(): void {
+    this._stream_geometry_delta = null
+    this._stream_visuals_delta = null
   }
 
   /** Re-upload all retained state after the browser restores the GL context. */

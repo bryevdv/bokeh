@@ -2,6 +2,7 @@ import {expect} from "#framework/assertions"
 
 import {expand_to_per_vertex, Float32Buffer, NormalizedUint8Buffer, Uint8Buffer} from "@bokehjs/models/glyphs/webgl/buffer"
 import type {ReglWrapper} from "@bokehjs/models/glyphs/webgl/regl_wrap"
+import type {StreamDelta} from "@bokehjs/core/patching"
 import {UniformScalar, UniformVector} from "@bokehjs/core/uniforms"
 import {encode_rgba} from "@bokehjs/core/util/color"
 import type {Buffer} from "regl"
@@ -290,5 +291,111 @@ describe("WrappedBuffer", () => {
 
     expect(full_uploads).to.be.equal(1)
     expect(sparse_uploads).to.be.equal(0)
+  })
+
+  it("should shift retained values and only evaluate the streamed tail during fixed rollover", () => {
+    const gpu_buffer = Object.assign((_options: unknown) => {}, {destroy() {}}) as unknown as Buffer
+    const regl_wrapper = {
+      flush() {},
+      flush_resource() {},
+      buffer() { return gpu_buffer },
+    } as unknown as ReglWrapper
+    const buffer = new Float32Buffer(regl_wrapper)
+    buffer.set_from_prop(new UniformVector([1, 2, 3, 4, 5]))
+    buffer.reset_upload_stats()
+
+    const accesses: number[] = []
+    class TrackingUniformVector extends UniformVector<number> {
+      override get(i: number): number {
+        accesses.push(i)
+        return super.get(i)
+      }
+    }
+    const delta: StreamDelta = {
+      old_length: 5,
+      new_length: 5,
+      new_rows: 2,
+      removed_rows: 2,
+      affected_ranges: [{start: 0, end: 5}],
+    }
+    buffer.set_from_prop(new TrackingUniformVector([3, 4, 5, 6, 7]), delta)
+
+    expect(buffer.get_array()).to.be.equal(new Float32Array([3, 4, 5, 6, 7]))
+    expect(accesses).to.be.equal([3, 4])
+    expect(buffer.upload_stats).to.be.equal({
+      full_uploads: 1,
+      partial_uploads: 0,
+      bytes: 5*Float32Array.BYTES_PER_ELEMENT,
+    })
+  })
+
+  it("should retain fixed-rollover values in a partially uploaded circular buffer", () => {
+    const updates: {data: number[], offset: number}[] = []
+    const gpu_buffer = Object.assign((_options: unknown) => {}, {
+      subdata(data: Float32Array, offset: number) {
+        updates.push({data: [...data], offset})
+      },
+      destroy() {},
+    }) as unknown as Buffer
+    const regl_wrapper = {
+      flush() {},
+      flush_resource() {},
+      buffer() { return gpu_buffer },
+    } as unknown as ReglWrapper
+    const buffer = new Float32Buffer(regl_wrapper)
+    buffer.set_from_prop(new UniformVector([1, 2, 3, 4, 5]))
+    buffer.reset_upload_stats()
+
+    const delta: StreamDelta = {
+      old_length: 5,
+      new_length: 5,
+      new_rows: 2,
+      removed_rows: 2,
+      affected_ranges: [{start: 0, end: 5}],
+    }
+    buffer.set_from_prop(new UniformVector([3, 4, 5, 6, 7]), delta, 2)
+    expect(buffer.get_array()).to.be.equal(new Float32Array([6, 7, 3, 4, 5]))
+    expect(buffer.get_logical_array()).to.be.equal(new Float32Array([3, 4, 5, 6, 7]))
+    expect(buffer.circular_offset).to.be.equal(2)
+
+    buffer.set_from_prop(new UniformVector([5, 6, 7, 8, 9]), delta, 4)
+    expect(buffer.get_logical_array()).to.be.equal(new Float32Array([5, 6, 7, 8, 9]))
+
+    buffer.set_from_prop(new UniformVector([7, 8, 9, 10, 11]), delta, 1)
+    expect(buffer.get_logical_array()).to.be.equal(new Float32Array([7, 8, 9, 10, 11]))
+    expect(buffer.circular_offset).to.be.equal(1)
+    expect(updates).to.be.equal([
+      {data: [6, 7], offset: 0},
+      {data: [8, 9], offset: 2*Float32Array.BYTES_PER_ELEMENT},
+      {data: [10], offset: 4*Float32Array.BYTES_PER_ELEMENT},
+      {data: [11], offset: 0},
+    ])
+    expect(buffer.upload_stats).to.be.equal({
+      full_uploads: 0,
+      partial_uploads: 4,
+      bytes: 6*Float32Array.BYTES_PER_ELEMENT,
+    })
+  })
+
+  it("should rebuild the whole buffer when streaming without fixed rollover", () => {
+    const gpu_buffer = Object.assign((_options: unknown) => {}, {destroy() {}}) as unknown as Buffer
+    const regl_wrapper = {
+      flush() {},
+      flush_resource() {},
+      buffer() { return gpu_buffer },
+    } as unknown as ReglWrapper
+    const buffer = new Float32Buffer(regl_wrapper)
+    buffer.set_from_prop(new UniformVector([1, 2, 3]))
+
+    const delta: StreamDelta = {
+      old_length: 3,
+      new_length: 5,
+      new_rows: 2,
+      removed_rows: 0,
+      affected_ranges: [{start: 3, end: 5}],
+    }
+    buffer.set_from_prop(new UniformVector([1, 2, 3, 4, 5]), delta)
+
+    expect(buffer.get_array()).to.be.equal(new Float32Array([1, 2, 3, 4, 5]))
   })
 })

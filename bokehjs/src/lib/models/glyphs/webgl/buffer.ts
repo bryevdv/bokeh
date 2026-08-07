@@ -7,6 +7,7 @@ import type {Uniform, ColorUniformVector} from "core/uniforms"
 import {assert} from "core/util/assert"
 import {color2rgba, byte} from "core/util/color"
 import type {AttributeConfig, Buffer} from "regl"
+import type {StreamDelta} from "core/patching"
 
 type WrappedArrayType = Float32Array | Uint8Array
 
@@ -29,6 +30,7 @@ export abstract class WrappedBuffer<ArrayType extends WrappedArrayType> {
   private _full_uploads = 0
   private _partial_uploads = 0
   private _uploaded_bytes = 0
+  private _circular_offset = 0
 
   // Number of buffer elements per rendered primitive, e.g. for RGBA buffers this is 4
   // as a single color is 4 x uint8 = 32-bit in total.
@@ -78,6 +80,11 @@ export abstract class WrappedBuffer<ArrayType extends WrappedArrayType> {
     return this._uploaded_revision
   }
 
+  /** Physical primitive containing logical item zero. */
+  get circular_offset(): number {
+    return this._circular_offset
+  }
+
   get upload_stats(): BufferUploadStats {
     return {
       full_uploads: this._full_uploads,
@@ -94,6 +101,113 @@ export abstract class WrappedBuffer<ArrayType extends WrappedArrayType> {
 
   protected abstract new_array(len: number): ArrayType
 
+  physical_index(logical_index: number, circular_offset: number = this._circular_offset): number {
+    const nitems = this.length/this.elements_per_primitive
+    return nitems == 0 ? 0 : (circular_offset + logical_index) % nitems
+  }
+
+  get_logical_array(): ArrayType {
+    const {array, elements_per_primitive, _circular_offset} = this
+    assert(array != null, "WrappedBuffer not yet initialised")
+    if (_circular_offset == 0 || this.is_scalar) {
+      return array.slice() as ArrayType
+    }
+
+    const logical = this.new_array(array.length)
+    const physical_offset = _circular_offset*elements_per_primitive
+    const split = array.length - physical_offset
+    logical.set(array.subarray(physical_offset), 0)
+    logical.set(array.subarray(0, physical_offset), split)
+    return logical
+  }
+
+  private _fixed_rollover(nitems: number, delta: StreamDelta): boolean {
+    return delta.old_length == delta.new_length &&
+      delta.new_rows == delta.removed_rows &&
+      delta.new_rows > 0 &&
+      nitems == delta.new_length &&
+      !this.is_scalar &&
+      this.array != null &&
+      this.array.length == nitems*this.elements_per_primitive
+  }
+
+  can_update_circular_stream(nitems: number, delta: StreamDelta): boolean {
+    return this._fixed_rollover(nitems, delta)
+  }
+
+  next_circular_offset(delta: StreamDelta): number {
+    return delta.new_length == 0 ? 0 :
+      (this._circular_offset + delta.removed_rows) % delta.new_length
+  }
+
+  commit_circular_stream(nitems: number, delta: StreamDelta, circular_offset: number): void {
+    assert(this._fixed_rollover(nitems, delta), "invalid circular buffer stream")
+    assert(circular_offset == this.next_circular_offset(delta), "inconsistent circular buffer offset")
+    this._circular_offset = circular_offset
+
+    const first_primitive = this.physical_index(nitems - delta.new_rows)
+    const first_length = Math.min(delta.new_rows, nitems - first_primitive)
+    const second_length = delta.new_rows - first_length
+    this.update_range(
+      first_primitive*this.elements_per_primitive,
+      first_length*this.elements_per_primitive,
+    )
+    if (second_length != 0) {
+      this.update_range(0, second_length*this.elements_per_primitive)
+    }
+  }
+
+  protected update_from_stream(
+    nitems: number,
+    delta: StreamDelta,
+    write: (array: ArrayType, logical_index: number, physical_index: number) => void,
+    circular_offset?: number,
+  ): boolean {
+    const {array, elements_per_primitive} = this
+    if (!this._fixed_rollover(nitems, delta) || array == null) {
+      return false
+    }
+
+    if (circular_offset != null) {
+      if (circular_offset != this.next_circular_offset(delta)) {
+        return false
+      }
+      const start = nitems - delta.new_rows
+      for (let i = start; i < nitems; i++) {
+        write(array, i, this.physical_index(i, circular_offset))
+      }
+      this.commit_circular_stream(nitems, delta, circular_offset)
+      return true
+    }
+
+    const shift = delta.removed_rows*elements_per_primitive
+    array.copyWithin(0, shift)
+    const start = nitems - delta.new_rows
+    for (let i = start; i < nitems; i++) {
+      write(array, i, i)
+    }
+    this.update(false)
+    return true
+  }
+
+  set_from_function(
+    nitems: number,
+    write: (array: ArrayType, logical_index: number, physical_index: number) => void,
+    delta?: StreamDelta,
+    circular_offset?: number,
+  ): void {
+    if (delta != null && this.update_from_stream(nitems, delta, write, circular_offset)) {
+      return
+    }
+
+    const array = this.get_sized_array(nitems*this.elements_per_primitive)
+    const offset = circular_offset ?? 0
+    for (let i = 0; i < nitems; i++) {
+      write(array, i, this.physical_index(i, offset))
+    }
+    this.update(false, offset)
+  }
+
   set_from_array(numbers: Arrayable<number>): void {
     const len = numbers.length
     const array = this.get_sized_array(len)
@@ -105,15 +219,24 @@ export abstract class WrappedBuffer<ArrayType extends WrappedArrayType> {
     this.update()
   }
 
-  set_from_prop(prop: Uniform<number>): void {
+  set_from_prop(prop: Uniform<number>, delta?: StreamDelta, circular_offset?: number): void {
     const len = prop.is_Scalar() ? 1 : prop.length
+    if (delta != null && !prop.is_Scalar() &&
+        this.update_from_stream(
+          len, delta,
+          (array, logical_index, physical_index) => array[physical_index] = prop.get(logical_index),
+          circular_offset,
+        )) {
+      return
+    }
     const array = this.get_sized_array(len)
 
+    const offset = prop.is_Scalar() ? 0 : circular_offset ?? 0
     for (let i = 0; i < len; i++) {
-      array[i] = prop.get(i)
+      array[this.physical_index(i, offset)] = prop.get(i)
     }
 
-    this.update(prop.is_Scalar())
+    this.update(prop.is_Scalar(), offset)
   }
 
   set_from_scalar(scalar: number): void {
@@ -152,6 +275,13 @@ export abstract class WrappedBuffer<ArrayType extends WrappedArrayType> {
     }
   }
 
+  to_attribute_config_primitive(offset: number = 0, scalar_divisor: number = 1): AttributeConfig {
+    return this.to_attribute_config(
+      this.is_scalar ? 0 : offset*this.elements_per_primitive,
+      scalar_divisor,
+    )
+  }
+
   // to_attribute_config_nested() is used for the more complicated case in
   // which the vectorisation is nested, such as rendering multi_lines where
   // each visual property has a single buffer that is used multiple times, once
@@ -186,7 +316,7 @@ export abstract class WrappedBuffer<ArrayType extends WrappedArrayType> {
 
   // Update ReGL buffer with data contained in array in preparation for passing
   // it to the GPU.  This function must be called after get_sized_array().
-  update(is_scalar: boolean = false): void {
+  update(is_scalar: boolean = false, circular_offset: number = 0): void {
     this._revision++
     // Update buffer with data contained in array.
     if (this.buffer == null) {
@@ -202,6 +332,7 @@ export abstract class WrappedBuffer<ArrayType extends WrappedArrayType> {
     }
 
     this.is_scalar = is_scalar
+    this._circular_offset = is_scalar ? 0 : circular_offset
     this._uploaded_byte_length = this.array?.byteLength ?? 0
     this._full_uploads++
     this._uploaded_bytes += this._uploaded_byte_length
@@ -218,7 +349,7 @@ export abstract class WrappedBuffer<ArrayType extends WrappedArrayType> {
       return
     }
     if (buffer == null || this._uploaded_byte_length != array.byteLength) {
-      this.update(this.is_scalar)
+      this.update(this.is_scalar, this._circular_offset)
       return
     }
     this._revision++
@@ -237,7 +368,7 @@ export abstract class WrappedBuffer<ArrayType extends WrappedArrayType> {
       return
     }
     if (buffer == null || this._uploaded_byte_length != array.byteLength) {
-      this.update(this.is_scalar)
+      this.update(this.is_scalar, this._circular_offset)
       return
     }
 
@@ -272,6 +403,7 @@ export abstract class WrappedBuffer<ArrayType extends WrappedArrayType> {
     this.buffer = undefined
     this.array = undefined
     this._uploaded_byte_length = 0
+    this._circular_offset = 0
     this._revision++
   }
 }
@@ -303,12 +435,28 @@ export class Uint8Buffer extends WrappedBuffer<Uint8Array> {
     return this.is_normalized() && alpha > 0 && value == 0 ? 1 : value
   }
 
-  set_from_color(color_prop: Uniform<uint32>, alpha_prop: Uniform<number>): void {
+  set_from_color(
+    color_prop: Uniform<uint32>,
+    alpha_prop: Uniform<number>,
+    delta?: StreamDelta,
+    circular_offset?: number,
+  ): void {
     const is_scalar_colors = color_prop.is_Scalar()
     const is_scalar = is_scalar_colors && alpha_prop.is_Scalar()
     const ncolors = is_scalar ? 1 : color_prop.length
 
-    if (!is_scalar_colors) {
+    if (delta != null && !is_scalar &&
+        this.update_from_stream(ncolors, delta, (array, logical_index, physical_index) => {
+          const [r, g, b, a] = color2rgba(color_prop.get(logical_index))
+          array[4*physical_index  ] = r
+          array[4*physical_index+1] = g
+          array[4*physical_index+2] = b
+          array[4*physical_index+3] = this._alpha_byte(alpha_prop.get(logical_index)*a)
+        }, circular_offset)) {
+      return
+    }
+
+    if (!is_scalar_colors && circular_offset == null) {
       const color_v = color_prop as ColorUniformVector
       const array = new Uint8Array(color_v.copy_buffer())
       for (let i = 0; i < ncolors; i++) {
@@ -322,48 +470,75 @@ export class Uint8Buffer extends WrappedBuffer<Uint8Array> {
 
     const array = this.get_sized_array(4*ncolors)
 
-    for (let i = 0; i < ncolors; i++) {
-      const [r, g, b, a] = color2rgba(color_prop.get(i))
-      array[4*i  ] = r
-      array[4*i+1] = g
-      array[4*i+2] = b
-      array[4*i+3] = this._alpha_byte(alpha_prop.get(i)*a)
+    const offset = is_scalar ? 0 : circular_offset ?? 0
+    for (let logical_index = 0; logical_index < ncolors; logical_index++) {
+      const physical_index = this.physical_index(logical_index, offset)
+      const [r, g, b, a] = color2rgba(color_prop.get(logical_index))
+      array[4*physical_index  ] = r
+      array[4*physical_index+1] = g
+      array[4*physical_index+2] = b
+      array[4*physical_index+3] = this._alpha_byte(alpha_prop.get(logical_index)*a)
     }
 
-    this.update(is_scalar)
+    this.update(is_scalar, offset)
   }
 
-  set_from_hatch_pattern(hatch_pattern_prop: Uniform<HatchPattern>): void {
+  set_from_hatch_pattern(
+    hatch_pattern_prop: Uniform<HatchPattern>,
+    delta?: StreamDelta,
+    circular_offset?: number,
+  ): void {
     const len = hatch_pattern_prop.is_Scalar() ? 1 : hatch_pattern_prop.length
+    if (delta != null && !hatch_pattern_prop.is_Scalar() &&
+        this.update_from_stream(len, delta, (array, logical_index, physical_index) => {
+          array[physical_index] = hatch_pattern_to_index(hatch_pattern_prop.get(logical_index))
+        }, circular_offset)) {
+      return
+    }
     const array = this.get_sized_array(len)
 
-    for (let i = 0; i < len; i++) {
-      array[i] = hatch_pattern_to_index(hatch_pattern_prop.get(i))
+    const offset = hatch_pattern_prop.is_Scalar() ? 0 : circular_offset ?? 0
+    for (let logical_index = 0; logical_index < len; logical_index++) {
+      array[this.physical_index(logical_index, offset)] = hatch_pattern_to_index(hatch_pattern_prop.get(logical_index))
     }
 
-    this.update(hatch_pattern_prop.is_Scalar())
+    this.update(hatch_pattern_prop.is_Scalar(), offset)
   }
 
-  set_from_line_cap(line_cap_prop: Uniform<LineCap>): void {
+  set_from_line_cap(line_cap_prop: Uniform<LineCap>, delta?: StreamDelta, circular_offset?: number): void {
     const len = line_cap_prop.is_Scalar() ? 1 : line_cap_prop.length
+    if (delta != null && !line_cap_prop.is_Scalar() &&
+        this.update_from_stream(len, delta, (array, logical_index, physical_index) => {
+          array[physical_index] = cap_lookup[line_cap_prop.get(logical_index)]
+        }, circular_offset)) {
+      return
+    }
     const array = this.get_sized_array(len)
 
-    for (let i = 0; i < len; i++) {
-      array[i] = cap_lookup[line_cap_prop.get(i)]
+    const offset = line_cap_prop.is_Scalar() ? 0 : circular_offset ?? 0
+    for (let logical_index = 0; logical_index < len; logical_index++) {
+      array[this.physical_index(logical_index, offset)] = cap_lookup[line_cap_prop.get(logical_index)]
     }
 
-    this.update(line_cap_prop.is_Scalar())
+    this.update(line_cap_prop.is_Scalar(), offset)
   }
 
-  set_from_line_join(line_join_prop: Uniform<LineJoin>): void {
+  set_from_line_join(line_join_prop: Uniform<LineJoin>, delta?: StreamDelta, circular_offset?: number): void {
     const len = line_join_prop.is_Scalar() ? 1 : line_join_prop.length
+    if (delta != null && !line_join_prop.is_Scalar() &&
+        this.update_from_stream(len, delta, (array, logical_index, physical_index) => {
+          array[physical_index] = join_lookup[line_join_prop.get(logical_index)]
+        }, circular_offset)) {
+      return
+    }
     const array = this.get_sized_array(len)
 
-    for (let i = 0; i < len; i++) {
-      array[i] = join_lookup[line_join_prop.get(i)]
+    const offset = line_join_prop.is_Scalar() ? 0 : circular_offset ?? 0
+    for (let logical_index = 0; logical_index < len; logical_index++) {
+      array[this.physical_index(logical_index, offset)] = join_lookup[line_join_prop.get(logical_index)]
     }
 
-    this.update(line_join_prop.is_Scalar())
+    this.update(line_join_prop.is_Scalar(), offset)
   }
 }
 

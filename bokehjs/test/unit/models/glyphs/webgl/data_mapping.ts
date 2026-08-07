@@ -1,8 +1,8 @@
 import {expect} from "#framework/assertions"
 
 import {
-  create_data_mapping, data_mapping_is_precise, map_packed_point, missing_data_value, pack_data_points,
-  with_data_origin,
+  create_data_mapping, create_data_mapping_from_axes, create_frame_axis_mapping, data_mapping_is_precise,
+  map_packed_point, missing_data_value, pack_data_points, pack_data_rects, with_data_origin,
 } from "@bokehjs/models/glyphs/webgl/data_mapping"
 import {LinearScale} from "@bokehjs/models/scales/linear_scale"
 import {LogScale} from "@bokehjs/models/scales/log_scale"
@@ -81,5 +81,42 @@ describe("WebGL data mapping", () => {
 
     const zoomed = create_data_mapping(linear([1e12, 1e12 + 10], [0, 1000]), linear([0, 1], [100, 0]))!
     expect(data_mapping_is_precise(zoomed, error)).to.be.false
+  })
+
+  it("should pack both rectangle corners against one precision-preserving origin", () => {
+    const xscale = linear([1e12, 1e12 + 100], [20, 820])
+    const yscale = log([1, 1_000], [420, 20])
+    const mapping = create_data_mapping(xscale, yscale)!
+    const corner0 = new Float32Array(4)
+    const corner1_x = new Float32Array(2)
+    const corner1_y = new Float32Array(2)
+    const x0 = [1e12 + 1, 1e12 + 20]
+    const y0 = [2, 10]
+    const x1 = [1e12 + 10, 1e12 + 40]
+    const y1 = [20, 100]
+
+    const {origin} = pack_data_rects(corner0, corner1_x, corner1_y, x0, y0, x1, y1, mapping)
+    const resolved = with_data_origin(mapping, origin)
+    for (let i = 0; i < 2; i++) {
+      const mapped0 = map_packed_point(corner0.subarray(2*i, 2*i + 2), resolved)
+      const mapped1 = map_packed_point([corner1_x[i], corner1_y[i]], resolved)
+      expect(mapped0[0]).to.be.similar(xscale.compute(x0[i]), 0.02)
+      expect(mapped0[1]).to.be.similar(yscale.compute(y0[i]), 0.02)
+      expect(mapped1[0]).to.be.similar(xscale.compute(x1[i]), 0.02)
+      expect(mapped1[1]).to.be.similar(yscale.compute(y1[i]), 0.02)
+    }
+  })
+
+  it("should combine a normalized frame axis with a data axis", () => {
+    const frame = create_frame_axis_mapping(40, 840)
+    const yscale = linear([-2, 2], [420, 20])
+    const data = create_data_mapping(yscale, yscale)!
+    const mapping = create_data_mapping_from_axes(frame, data.y, "frame:linear")
+    const points = new Float32Array(4)
+    const {origin} = pack_data_points(points, [0, 1], [-1, 1], mapping)
+    const resolved = with_data_origin(mapping, origin)
+
+    expect(map_packed_point(points.subarray(0, 2), resolved)).to.be.equal([40, 320])
+    expect(map_packed_point(points.subarray(2, 4), resolved)).to.be.equal([840, 120])
   })
 })

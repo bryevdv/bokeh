@@ -10,7 +10,7 @@ import {atan2} from "core/util/math"
 import {Glyph, GlyphView} from "./glyph"
 import {generic_line_vector_legend} from "./utils"
 import {Selection} from "../selections/selection"
-import type {PathGL} from "./webgl/path"
+import type {SegmentGL} from "./webgl/segment"
 import type {ScreenLine} from "./curve"
 
 export interface SegmentView extends Segment.Data {}
@@ -20,11 +20,11 @@ export class SegmentView extends GlyphView {
   declare visuals: Segment.Visuals
 
   /** @internal */
-  declare glglyph?: PathGL
+  declare glglyph?: SegmentGL
 
   override async load_glglyph() {
-    const {PathGL} = await import("./webgl/path")
-    return PathGL
+    const {SegmentGL} = await import("./webgl/segment")
+    return SegmentGL
   }
 
   webgl_lines(): ScreenLine[] {
@@ -42,6 +42,7 @@ export class SegmentView extends GlyphView {
     super.paint(ctx, indices, data)
     if (this.has_webgl() && this.decorations.size > 0) {
       this.canvas.blit_webgl(ctx)
+      this.ensure_screen_data()
       const {sx0, sy0, sx1, sy1} = {...this, ...data}
       for (const i of indices) {
         if (isFinite(sx0[i] + sy0[i] + sx1[i] + sy1[i])) {
@@ -186,6 +187,7 @@ export class SegmentView extends GlyphView {
   }
 
   scenterxy(i: number): [number, number] {
+    this.ensure_screen_data()
     const scx = this.sx0[i]/2 + this.sx1[i]/2
     const scy = this.sy0[i]/2 + this.sy1[i]/2
     return [scx, scy]

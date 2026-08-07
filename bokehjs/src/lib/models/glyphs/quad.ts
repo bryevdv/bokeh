@@ -1,6 +1,7 @@
 import {LRTB, LRTBView} from "./lrtb"
 import type {LRTBRect} from "./lrtb"
 import * as p from "core/properties"
+import type {QuadGL} from "./webgl/quad"
 
 export interface QuadView extends Quad.Data {}
 
@@ -8,7 +9,16 @@ export class QuadView extends LRTBView {
   declare model: Quad
   declare visuals: Quad.Visuals
 
+  /** @internal */
+  declare glglyph?: QuadGL
+
+  override async load_glglyph() {
+    const {QuadGL} = await import("./webgl/quad")
+    return QuadGL
+  }
+
   scenterxy(i: number): [number, number] {
+    this.ensure_screen_data()
     const scx = this.sleft[i]/2 + this.sright[i]/2
     const scy = this.stop[i]/2 + this.sbottom[i]/2
     return [scx, scy]

@@ -4,6 +4,8 @@ import type {AttributeConfig, BoundingBox, Elements, Framebuffer2D, Texture2D, V
 import type {MarkerType} from "core/enums"
 import type {DataMapping} from "./data_mapping"
 export type GLMarkerType = MarkerType | "hex_tile" | "rect" | "round_rect" | "ellipse" | "annulus" | "wedge" | "annular_wedge" | "ngon"
+export type MarkerDataMapping = "none" | "point" | "rect" | "hstrip" | "vstrip"
+export type CoordinateRounding = "none" | "x" | "y"
 
 // Props are used to pass properties from GL glyph classes to ReGL functions.
 export type AccumulateProps = {
@@ -61,9 +63,20 @@ export type LineGlyphProps = CommonLineProps & LineProps & {
 
 export type LineDashGlyphProps = LineGlyphProps & DashProps
 
+export type SegmentGlyphProps = CommonLineProps & LineProps & {
+  miter_limit: number
+  start: Float32Buffer
+  end: Float32Buffer
+  show: Uint8Buffer
+  hidden: Uint8Buffer
+  nsegments: number
+  data_mapping: DataMapping | null
+}
+
 export type MarkerGlyphProps = CommonLineProps & LineProps & FillProps & {
   center: Float32Buffer
   nmarkers: number
+  marker_offset: number
   width: Float32Buffer
   height: Float32Buffer
   angle: Float32Buffer
@@ -162,6 +175,17 @@ export type LineDashGlyphAttributes = LineGlyphAttributes & {
   a_dash_scale: AttributeConfig
   a_dash_offset: AttributeConfig
   a_length_so_far: AttributeConfig
+}
+
+export type SegmentGlyphAttributes = LineAttributes & {
+  a_position: AttributeConfig
+  a_point_prev: AttributeConfig
+  a_point_start: AttributeConfig
+  a_point_end: AttributeConfig
+  a_point_next: AttributeConfig
+  a_show_prev: AttributeConfig
+  a_show_curr: AttributeConfig
+  a_show_next: AttributeConfig
 }
 
 export type MarkerGlyphAttributes = LineAttributes & FillAttributes & {

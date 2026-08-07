@@ -2,7 +2,7 @@ import createRegl from "regl"
 import type {Regl, DrawConfig, BoundingBox, Buffer, BufferOptions, Elements, ElementsOptions} from "regl"
 import type {AttributeConfig, Attributes, MaybeDynamicAttributes, DefaultContext, Framebuffer2D, Texture2D, Texture2DOptions, VertexArrayObject} from "regl"
 import type * as t from "./types"
-import type {GLMarkerType} from "./types"
+import type {CoordinateRounding, GLMarkerType, MarkerDataMapping} from "./types"
 import type {DashReturn} from "./dash_cache"
 import {DashCache} from "./dash_cache"
 import accumulate_vertex_source from "./accumulate.vert"
@@ -63,6 +63,7 @@ export class ReglWrapper {
   private _accumulate?: ReglRenderFunction<t.AccumulateProps>
   private _image?: ReglRenderFunction<t.ImageProps>
   private readonly _solid_line_map = new Map<boolean, ReglRenderFunction<t.LineGlyphProps>>()
+  private readonly _segment_map = new Map<string, ReglRenderFunction<t.SegmentGlyphProps>>()
   private _dashed_line?: ReglRenderFunction<t.LineDashGlyphProps>
   private _polygon?: ReglRenderFunction<t.PolygonGlyphProps>
   private _polygon_hatch?: ReglRenderFunction<t.PolygonHatchGlyphProps>
@@ -381,21 +382,21 @@ export class ReglWrapper {
     return this._polygon_hatch
   }
 
-  public marker_no_hatch(marker_type: GLMarkerType, data_mapped: boolean = false): ReglRenderFunction<t.MarkerGlyphProps> {
-    const key = `${marker_type}:${data_mapped}`
+  public marker_no_hatch(marker_type: GLMarkerType, data_mapping: MarkerDataMapping = "none"): ReglRenderFunction<t.MarkerGlyphProps> {
+    const key = `${marker_type}:${data_mapping}`
     let func = this._marker_no_hatch_map.get(key)
     if (func == null) {
-      func = this._batch(`marker:${key}`, regl_marker(this._regl, this._marker_geometry, marker_type, data_mapped))
+      func = this._batch(`marker:${key}`, regl_marker(this._regl, this._marker_geometry, marker_type, data_mapping))
       this._marker_no_hatch_map.set(key, func)
     }
     return func
   }
 
-  public marker_hatch(marker_type: GLMarkerType, data_mapped: boolean = false): ReglRenderFunction<t.MarkerHatchGlyphProps> {
-    const key = `${marker_type}:${data_mapped}`
+  public marker_hatch(marker_type: GLMarkerType, data_mapping: MarkerDataMapping = "none"): ReglRenderFunction<t.MarkerHatchGlyphProps> {
+    const key = `${marker_type}:${data_mapping}`
     let func = this._marker_hatch_map.get(key)
     if (func == null) {
-      func = this._batch(`hatched-marker:${key}`, regl_marker_hatch(this._regl, this._marker_geometry, marker_type, data_mapped))
+      func = this._batch(`hatched-marker:${key}`, regl_marker_hatch(this._regl, this._marker_geometry, marker_type, data_mapping))
       this._marker_hatch_map.set(key, func)
     }
     return func
@@ -408,6 +409,20 @@ export class ReglWrapper {
         this._regl, this._line_geometry, this._line_triangles, data_mapped,
       ))
       this._solid_line_map.set(data_mapped, func)
+    }
+    return func
+  }
+
+  public segment(
+    data_mapped: boolean = false, rounding: CoordinateRounding = "none",
+  ): ReglRenderFunction<t.SegmentGlyphProps> {
+    const key = `${data_mapped}:${rounding}`
+    let func = this._segment_map.get(key)
+    if (func == null) {
+      func = this._batch(`segment:${key}`, regl_segment(
+        this._regl, this._line_geometry, this._line_triangles, data_mapped, rounding,
+      ))
+      this._segment_map.set(key, func)
     }
     return func
   }
@@ -608,6 +623,96 @@ function regl_solid_line(
     },
     depth: {enable: false},
     framebuffer: regl.prop<Props, "framebuffer">("framebuffer"),
+    scissor: {
+      enable: true,
+      box: regl.prop<Props, "scissor">("scissor"),
+    },
+    viewport: regl.prop<Props, "viewport">("viewport"),
+  }
+
+  return regl<Uniforms, Attributes, Props>(config) as RawReglRenderFunction<Props>
+}
+
+function regl_segment(
+  regl: Regl, line_geometry: Buffer, line_triangles: Elements, data_mapped: boolean,
+  rounding: CoordinateRounding,
+): RawReglRenderFunction<t.SegmentGlyphProps> {
+  type Props = t.SegmentGlyphProps
+  type Uniforms = t.LineGlyphUniforms
+  type Attributes = t.SegmentGlyphAttributes
+
+  const config: DrawConfig<Uniforms, Attributes, Props> = {
+    vert: `\
+${data_mapped ? "#define DATA_MAPPING" : ""}
+${rounding == "x" ? "#define ROUND_DATA_X" : ""}
+${rounding == "y" ? "#define ROUND_DATA_Y" : ""}
+${line_vertex_shader}`,
+    frag: line_fragment_shader,
+
+    attributes: {
+      a_position: {
+        buffer: line_geometry,
+        divisor: 0,
+      },
+      a_point_prev(_, props) {
+        return props.start.to_attribute_config()
+      },
+      a_point_start(_, props) {
+        return props.start.to_attribute_config()
+      },
+      a_point_end(_, props) {
+        return props.end.to_attribute_config()
+      },
+      a_point_next(_, props) {
+        return props.end.to_attribute_config()
+      },
+      a_show_prev(_, props) {
+        return props.hidden.to_attribute_config(0, props.nsegments)
+      },
+      a_show_curr(_, props) {
+        return props.show.to_attribute_config()
+      },
+      a_show_next(_, props) {
+        return props.hidden.to_attribute_config(0, props.nsegments)
+      },
+      a_linewidth(_, props) {
+        return props.linewidth.to_attribute_config(0, props.nsegments)
+      },
+      a_line_color(_, props) {
+        return props.line_color.to_attribute_config(0, props.nsegments)
+      },
+      a_line_cap(_, props) {
+        return props.line_cap.to_attribute_config(0, props.nsegments)
+      },
+      a_line_join(_, props) {
+        return props.line_join.to_attribute_config(0, props.nsegments)
+      },
+    },
+
+    uniforms: {
+      u_canvas_size: regl.prop<Props, "canvas_size">("canvas_size"),
+      u_antialias: regl.prop<Props, "antialias">("antialias"),
+      u_miter_limit: regl.prop<Props, "miter_limit">("miter_limit"),
+      ...(data_mapped ? {
+        u_data_offset: (_ctx, props) => props.data_mapping!.offset,
+        u_data_factor: (_ctx, props) => props.data_mapping!.factor,
+        u_data_target: (_ctx, props) => props.data_mapping!.target,
+      } : {}),
+    },
+
+    elements: line_triangles,
+    instances: regl.prop<Props, "nsegments">("nsegments"),
+
+    blend: {
+      enable: true,
+      func: {
+        srcRGB: "one",
+        srcAlpha: "one",
+        dstRGB: "one minus src alpha",
+        dstAlpha: "one minus src alpha",
+      },
+    },
+    depth: {enable: false},
     scissor: {
       enable: true,
       box: regl.prop<Props, "scissor">("scissor"),
@@ -839,7 +944,7 @@ function regl_marker<A extends Attributes, P extends t.MarkerGlyphProps = t.Mark
     regl: Regl,
     geometry: Buffer,
     marker_type: GLMarkerType,
-    data_mapped: boolean = false,
+    data_mapping: MarkerDataMapping = "none",
     vert_defs: string[] = [],
     frag_defs: string[] = [],
     attributes?: MaybeDynamicAttributes<A, DefaultContext, P>,
@@ -853,7 +958,10 @@ function regl_marker<A extends Attributes, P extends t.MarkerGlyphProps = t.Mark
 
   const config: DrawConfig<Uniforms, MarkerAttributes, P> = {
     vert: `\
-${data_mapped ? "#define DATA_MAPPING" : ""}
+${data_mapping != "none" ? "#define DATA_MAPPING" : ""}
+${data_mapping == "rect" || data_mapping == "hstrip" || data_mapping == "vstrip" ? "#define RECT_DATA_MAPPING" : ""}
+${data_mapping == "vstrip" ? "#define ROUND_DATA_X" : ""}
+${data_mapping == "hstrip" ? "#define ROUND_DATA_Y" : ""}
 ${vert_prefix}
 #define MULTI_MARKER
 #define USE_${marker_type.toUpperCase()}
@@ -871,37 +979,37 @@ ${marker_fragment_shader}
         divisor: 0,
       },
       a_center(_, props) {
-        return props.center.to_attribute_config(0, props.nmarkers)
+        return props.center.to_attribute_config_primitive(props.marker_offset, props.nmarkers)
       },
       a_width(_, props) {
-        return props.width.to_attribute_config(0, props.nmarkers)
+        return props.width.to_attribute_config_primitive(props.marker_offset, props.nmarkers)
       },
       a_height(_, props) {
-        return props.height.to_attribute_config(0, props.nmarkers)
+        return props.height.to_attribute_config_primitive(props.marker_offset, props.nmarkers)
       },
       a_angle(_, props) {
-        return props.angle.to_attribute_config(0, props.nmarkers)
+        return props.angle.to_attribute_config_primitive(props.marker_offset, props.nmarkers)
       },
       a_aux(_, props) {
-        return props.aux.to_attribute_config(0, props.nmarkers)
+        return props.aux.to_attribute_config_primitive(props.marker_offset, props.nmarkers)
       },
       a_linewidth(_, props) {
-        return props.linewidth.to_attribute_config(0, props.nmarkers)
+        return props.linewidth.to_attribute_config_primitive(props.marker_offset, props.nmarkers)
       },
       a_line_color(_, props) {
-        return props.line_color.to_attribute_config(0, props.nmarkers)
+        return props.line_color.to_attribute_config_primitive(props.marker_offset, props.nmarkers)
       },
       a_fill_color(_, props) {
-        return props.fill_color.to_attribute_config(0, props.nmarkers)
+        return props.fill_color.to_attribute_config_primitive(props.marker_offset, props.nmarkers)
       },
       a_line_cap(_, props) {
-        return props.line_cap.to_attribute_config(0, props.nmarkers)
+        return props.line_cap.to_attribute_config_primitive(props.marker_offset, props.nmarkers)
       },
       a_line_join(_, props) {
-        return props.line_join.to_attribute_config(0, props.nmarkers)
+        return props.line_join.to_attribute_config_primitive(props.marker_offset, props.nmarkers)
       },
       a_show(_, props) {
-        return props.show.to_attribute_config(0, props.nmarkers)
+        return props.show.to_attribute_config_primitive(props.marker_offset, props.nmarkers)
       },
       ...attributes,
     } as MaybeDynamicAttributes<MarkerAttributes, DefaultContext, P>,
@@ -911,7 +1019,7 @@ ${marker_fragment_shader}
       u_antialias: regl.prop<P, "antialias">("antialias"),
       u_size_hint: regl.prop<P, "size_hint">("size_hint"),
       u_border_radius: regl.prop<P, "border_radius">("border_radius"),
-      ...(data_mapped ? {
+      ...(data_mapping != "none" ? {
         u_data_offset: (_ctx, props) => props.data_mapping!.offset,
         u_data_factor: (_ctx, props) => props.data_mapping!.factor,
         u_data_target: (_ctx, props) => props.data_mapping!.target,
@@ -943,25 +1051,25 @@ ${marker_fragment_shader}
 }
 
 function regl_marker_hatch(
-  regl: Regl, geometry: Buffer, marker_type: GLMarkerType, data_mapped: boolean,
+  regl: Regl, geometry: Buffer, marker_type: GLMarkerType, data_mapping: MarkerDataMapping,
 ): RawReglRenderFunction<t.MarkerHatchGlyphProps> {
 
   const hatch_attributes: MaybeDynamicAttributes<t.HatchAttributes, DefaultContext, t.MarkerHatchGlyphProps> = {
     a_hatch_pattern(_, props) {
-      return props.hatch_pattern.to_attribute_config(0, props.nmarkers)
+      return props.hatch_pattern.to_attribute_config_primitive(props.marker_offset, props.nmarkers)
     },
     a_hatch_scale(_, props) {
-      return props.hatch_scale.to_attribute_config(0, props.nmarkers)
+      return props.hatch_scale.to_attribute_config_primitive(props.marker_offset, props.nmarkers)
     },
     a_hatch_weight(_, props) {
-      return props.hatch_weight.to_attribute_config(0, props.nmarkers)
+      return props.hatch_weight.to_attribute_config_primitive(props.marker_offset, props.nmarkers)
     },
     a_hatch_color(_, props) {
-      return props.hatch_color.to_attribute_config(0, props.nmarkers)
+      return props.hatch_color.to_attribute_config_primitive(props.marker_offset, props.nmarkers)
     },
   }
 
   return regl_marker<t.HatchAttributes, t.MarkerHatchGlyphProps>(
-    regl, geometry, marker_type, data_mapped, ["HATCH"], ["HATCH"], hatch_attributes,
+    regl, geometry, marker_type, data_mapping, ["HATCH"], ["HATCH"], hatch_attributes,
   )
 }
