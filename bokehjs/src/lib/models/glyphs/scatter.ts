@@ -133,7 +133,7 @@ export class Scatter extends Marker {
   declare properties: Scatter.Props
   declare __view_type__: ScatterView
 
-  constructor(attrs?: Partial<Scatter.Attrs>) {
+  protected constructor(attrs?: Partial<Scatter.Attrs>) {
     super(attrs)
   }
 
