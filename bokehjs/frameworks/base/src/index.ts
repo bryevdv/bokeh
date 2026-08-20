@@ -22,13 +22,14 @@ export class MountController {
   private _abort: AbortController | null = null
   private _mounted: BokehMount | null = null
   private _unlink_signal: (() => void) | null = null
+  private _on_disposed: ((mounted: BokehMount) => void) | null = null
 
   get mounted(): BokehMount | null {
     return this._mounted
   }
 
   /** Mounts all supplied roots into one Bokeh document and one DOM target. */
-  async start(model: BokehModel, target: BokehTarget, request: MountRequest = {}): Promise<BokehMount | null> {
+  async start(model: BokehModel, target?: BokehTarget, request: MountRequest = {}): Promise<BokehMount | null> {
     this.dispose()
 
     const generation = this._generation
@@ -39,13 +40,13 @@ export class MountController {
         return
       }
       const mounted = this._mounted
-      mounted?.dispose()
+      void mounted?.dispose()
       this._mounted = null
       this._unlink_signal?.()
       this._unlink_signal = null
       this._abort = null
       if (mounted != null) {
-        request.onDisposed?.(mounted)
+        this._notify_disposed(mounted)
       }
     }, {once: true})
 
@@ -60,35 +61,71 @@ export class MountController {
       }
     }
 
+    let reported_error: unknown = null
     try {
-      const mounted = await mount(model, target, {...request.mountOptions, signal: abort.signal})
+      const mounted = mount(model, target, {
+        ...request.mountOptions,
+        signal: abort.signal,
+        on_error: (error) => {
+          reported_error = error
+          try {
+            request.mountOptions?.on_error?.(error)
+          } finally {
+            request.onError?.(error)
+          }
+        },
+      })
+      this._mounted = mounted
+      await mounted.ready
       if (generation != this._generation || abort.signal.aborted) {
-        mounted.dispose()
+        await mounted.dispose()
         return null
       }
 
-      this._mounted = mounted
+      this._on_disposed = request.onDisposed ?? null
       request.onMounted?.(mounted)
       return mounted
     } catch (error) {
       if (generation == this._generation && !abort.signal.aborted) {
+        const mounted = this._mounted
+        this._mounted = null
         this._unlink_signal?.()
         this._unlink_signal = null
         this._abort = null
-        request.onError?.(error)
+        if (mounted != null && !mounted.disposed) {
+          void mounted.dispose()
+          this._notify_disposed(mounted)
+        } else {
+          this._on_disposed = null
+        }
+        if (error != reported_error) {
+          request.onError?.(error)
+        }
       }
       return null
     }
   }
 
   dispose(): void {
+    const mounted = this._mounted
     this._generation += 1
     this._unlink_signal?.()
     this._unlink_signal = null
     this._abort?.abort()
     this._abort = null
-    this._mounted?.dispose()
+    void mounted?.dispose()
     this._mounted = null
+    if (mounted != null) {
+      this._notify_disposed(mounted)
+    } else {
+      this._on_disposed = null
+    }
+  }
+
+  private _notify_disposed(mounted: BokehMount): void {
+    const on_disposed = this._on_disposed
+    this._on_disposed = null
+    on_disposed?.(mounted)
   }
 }
 
@@ -103,7 +140,7 @@ export class DocumentMountController {
   private readonly _targets = new Map<BokehRootModel, BokehTarget>()
   private _request: MountRequest = {}
   private _active_models: readonly BokehRootModel[] = []
-  private _active_targets: readonly BokehTarget[] = []
+  private _active_targets = new Map<BokehRootModel, BokehTarget>()
   private _active_signal: AbortSignal | undefined
   private _scheduled = false
 
@@ -148,7 +185,7 @@ export class DocumentMountController {
     this._models = []
     this._targets.clear()
     this._active_models = []
-    this._active_targets = []
+    this._active_targets.clear()
     this._active_signal = undefined
     this._controller.dispose()
   }
@@ -165,33 +202,53 @@ export class DocumentMountController {
   }
 
   private _refresh(): void {
-    const targets = this._models.map((model) => this._targets.get(model))
-    if (this._models.length == 0 || targets.some((target) => target == null)) {
+    if (this._models.length == 0) {
       this._active_models = []
-      this._active_targets = []
+      this._active_targets.clear()
       this._active_signal = undefined
       this._controller.dispose()
       return
     }
 
-    const complete_targets = targets as BokehTarget[]
+    // Framework providers render before their descendant root slots in some
+    // schedulers (notably Vue's post-flush watchers). Wait for the first slot
+    // so the initial mounted callback observes the roots from that render.
+    // Once a mount exists, removing every slot keeps its shared document alive.
+    if (this._targets.size == 0 && this._controller.mounted == null) {
+      return
+    }
+
     const signal = this._request.mountOptions?.signal
-    if (same_items(this._models, this._active_models) && same_items(complete_targets, this._active_targets) &&
-        signal == this._active_signal) {
+    const same_models = same_items(this._models, this._active_models)
+    if (same_models && signal == this._active_signal) {
+      const mounted = this._controller.mounted
+      if (mounted != null) {
+        for (const model of this._models) {
+          const previous = this._active_targets.get(model)
+          const current = this._targets.get(model)
+          if (current == null && previous != null) {
+            mounted.detach(model.id)
+          } else if (current != null && current != previous) {
+            void mounted.replace_target(model.id, current).catch(() => {})
+          }
+        }
+      }
+      this._active_targets = new Map(this._targets)
       return
     }
 
     this._active_models = [...this._models]
-    this._active_targets = [...complete_targets]
+    this._active_targets = new Map(this._targets)
     this._active_signal = signal
-    const fallback = complete_targets[0].ownerDocument.createDocumentFragment()
-    void this._controller.start([...this._models], fallback, {
-      mountOptions: {...this._request.mountOptions, root_targets: complete_targets},
+    const models = new Map(this._models.map((model) => [model.id, model]))
+    const targets = new Map([...this._targets].map(([model, target]) => [model.id, target]))
+    void this._controller.start(models, undefined, {
+      mountOptions: {...this._request.mountOptions, targets},
       onMounted: (mounted) => this._request.onMounted?.(mounted),
       onDisposed: (mounted) => this._request.onDisposed?.(mounted),
       onError: (error) => {
         this._active_models = []
-        this._active_targets = []
+        this._active_targets.clear()
         this._active_signal = undefined
         this._request.onError?.(error)
       },
