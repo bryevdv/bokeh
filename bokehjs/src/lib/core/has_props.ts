@@ -1,4 +1,4 @@
-//import {logger} from "./logging"
+import {logger} from "./logging"
 import type {View} from "./view"
 import type {Class} from "./class"
 import type {Attrs, Data, Dict} from "./types"
@@ -509,7 +509,9 @@ export abstract class HasProps extends Signalable() implements Equatable, Printa
   }
 
   destroy(): void {
-    assert(this._lifecycle_state != "destroyed")
+    if (this._lifecycle_state == "destroyed") {
+      return
+    }
     this._lifecycle_state = "destroyed"
     this.disconnect_signals()
     this.destroyed.emit()
@@ -808,11 +810,16 @@ export function construct<T extends HasProps>(cls: HasPropsClass<T>, attrs: Attr
     instance.finish()
     return instance
   } catch (error) {
-    instance.destroy()
+    try {
+      instance.destroy()
+    } catch (cleanup_error) {
+      logger.warn(`failed to destroy ${instance} after construction failed: ${cleanup_error}`)
+    }
     throw error
   }
 }
 
+/** @internal */
 export function construct_deferred<T extends HasProps>(cls: HasPropsClass<T>, id: string): T {
   return instantiate(cls, {}, id)
 }
