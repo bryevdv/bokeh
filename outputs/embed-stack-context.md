@@ -52,6 +52,31 @@ a6485cdf52 Fix increasing points in marimo demo
 00136fe8f5 Move Jupyter frontend under Python sources
 ```
 
+## Dedicated project environment
+
+All six replacement tasks use the dedicated `bokeh-embed` Conda environment for every project command, including Git, Python, Node.js, tests, and builds:
+
+```text
+/Users/bryan/anaconda3/bin/conda run -n bokeh-embed ...
+```
+
+This project rule overrides the workspace-level `dev313` default. The environment was created from `conda/environment-test-3.13.yml` and the transfer baseline is:
+
+| Tool | Version |
+|---|---|
+| Python | 3.13.15 |
+| Node.js | 24.19.0 |
+| npm | 11.17.0 |
+| pytest | 9.1.1 |
+
+The installed local Bokeh 4.0 proof-of-concept wheel is distribution metadata and a static baseline only. No task may repoint this shared environment with `pip install -e` or another editable install. Before a consequential Python run, verify that `bokeh` resolves to the intended task checkout. From a task repository root, invoke pytest as:
+
+```text
+/Users/bryan/anaconda3/bin/conda run -n bokeh-embed python -m pytest -o pythonpath=src ...
+```
+
+The EMBED 02 minimal-ID focused suite passes 129/129 with this command and source precedence. An earlier `dev313` run failed five tests because it imported the editable primary checkout; that result is recorded as wrong-source contamination, not a branch failure.
+
 ## Shared architectural contract
 
 The three implementation efforts are one program, not three independent API designs.
@@ -62,7 +87,7 @@ The three implementation efforts are one program, not three independent API desi
 4. Minimal IDs are the static serialization policy, not a universal protocol change. Static pages, fragments, JSON artifacts, external artifacts, and docs use graph-minimal IDs. Server sessions, patches, comms, and live notebook transports retain every ID required by their protocol boundaries.
 5. Resource requirements are emitted by the artifact compiler; resource policy resolves CDN, inline, server, relative, absolute, or host-owned delivery. Hosts may implement a resolver, but resource loading and deduplication have one promise-based contract.
 6. A `BokehMount` has explicit readiness, errors, ownership, root access, and idempotent disposal. It must support multiple logical roots and shared documents. Hosts own their mount targets; Bokeh owns only the views, listeners, sessions, and resources documented by the handle.
-7. Legacy APIs remain thin adapters during migration. `components()`, `file_html()`, `json_item()`, `autoload_static()`, `server_document()`, `server_session()`, `embed_item()`, and `embed_items()` do not disappear merely because a common implementation exists.
+7. Bokeh 4.0 is a breaking API boundary. Keep familiar APIs such as `components()`, `file_html()`, `save()`, and `show()` when they remain useful thin facades. Keep any other adapter only when it is isolated, cheap, and architecture-neutral. Do not preserve `RenderItem`, `JsonItem`, per-embed autoload programs, wrapping flags, or notebook-specific rendering machinery when doing so would maintain duplicate contracts; remove them or provide an explicit 4.0 migration error.
 8. Sphinx is a primary static consumer and Jupyter is a primary live/hosted consumer. Neither is a special case allowed to bypass the common artifact, resource, and mount contracts.
 
 ## Existing browser work and the target mount contract
@@ -150,7 +175,7 @@ Own the cross-language artifact schema, root addressing, resource requirement/po
 
 Acceptance:
 
-- all current use cases and API overlaps have an explicit legacy-to-new mapping;
+- all current use cases and API overlaps have an explicit 3.x-to-4.0 mapping, including removal/error behavior where no facade is retained;
 - schema fixtures cover static, multi-root, multi-document if retained, server-source, resources, buffers, and version/error cases;
 - ownership, readiness, disposal, target replacement, and error propagation are normative;
 - each later task records decisions that affect another layer back into this contract.
@@ -180,15 +205,15 @@ Acceptance:
 
 ### EMBED 03 — Artifact and resource runtime
 
-Implement the versioned Python/JavaScript `EmbedArtifact`, compiler, renderers, resource requirements/policy resolver, promise-based loader, server-source representation, and legacy adapters. Extend the lifecycle branch's `mount()` instead of introducing another browser entry point.
+Implement the versioned Python/JavaScript `EmbedArtifact`, compiler, renderers, resource requirements/policy resolver, promise-based loader, server-source representation, useful thin facades, and explicit 4.0 migration diagnostics. Extend the lifecycle branch's `mount()` instead of introducing another browser entry point.
 
 Acceptance:
 
 - one artifact supports page, typed fragment, JSON, external payload, and MIME rendering;
 - one mount path handles standalone and server sources with keyed targets and observable errors;
 - concurrent and sequential additive resource loading is deterministic and deduplicated;
-- `file_html()` and `components()` delegate first, followed by `json_item()` and other adapters without breaking their public return shapes;
-- cross-language schema fixtures and legacy compatibility matrices run in CI.
+- `file_html()` and `components()` delegate first; `JsonItem`, `RenderItem`, autoload, and wrapping-flag use cases move to the artifact APIs without constraining the new return shapes;
+- cross-language schema fixtures plus retained-facade and 4.0 migration matrices run in CI.
 
 ### EMBED 04 — Sphinx and `bokeh-plot`
 
@@ -219,14 +244,15 @@ Acceptance:
 - export links are safe and portable, concurrent exports are correlation-safe, and Playwright is the only browser automation layer;
 - the detailed review test matrix above passes.
 
-## Migration and compatibility policy
+## Bokeh 4.0 migration and compatibility policy
 
-- New APIs land without immediate deprecation warnings.
-- Existing Python and BokehJS APIs delegate to the common compiler/runtime before users are asked to migrate.
-- Preserve single objects, sequences, ordered mappings, `Document`, themes, templates, all current resource locations, headers/credentials, reverse-proxy behavior, and legacy JSON decoders.
-- Test semantic output rather than whitespace, random IDs, or incidental script layout.
-- Publish one before/after recipe for every use-case row in `embedding-architecture-proposal.md`.
-- Deprecate `autoload_static()` and overloaded return-shape flags only after Sphinx and downstream migration paths are proven. Keep useful convenience APIs such as `components()` and `file_html()` as thin facades unless there is a separate reason to remove them.
+- Bokeh 4.0 is intentionally allowed to break the 3.x embedding surface in order to establish one coherent architecture.
+- Keep familiar APIs only when they remain useful thin facades or when an adapter is clean, isolated, cheap to maintain, and unable to constrain the new contracts.
+- Preserve use cases and useful input capabilities: single objects, sequences, ordered mappings, `Document`, themes, templates, resource policies, headers/credentials, and reverse-proxy behavior all require documented 4.0 routes.
+- Do not preserve `RenderItem`, `JsonItem`, `autoload_static()`, wrapping flags, or notebook-private rendering machinery merely for compatibility. Prefer removal or an explicit migration error to a shim that recreates duplicate serialization, loading, targeting, or lifecycle behavior.
+- `EmbedArtifact` has its own compatibility rules. Do not infer a fixed one- or two-major-version support window for 3.x envelopes from that schema policy.
+- Test retained facades semantically rather than by whitespace, random IDs, or incidental script layout. Test removals with actionable diagnostics and runnable replacement recipes.
+- Publish one before/after recipe for every use-case row in `embedding-architecture-proposal.md` before Bokeh 4.0 ships.
 
 ## Verification protocol for the replacement stack
 
@@ -237,6 +263,7 @@ No old task should be removed until this audit passes.
 3. Compare the framework replay with `git range-diff` and a tree diff excluding the contract files.
 4. Compare the minimal-ID and Jupyter replays with `git range-diff`; record every conflict and why its resolution preserves both sides. Known semantic overlaps include `has_props.ts`, BokehJS document tests, `embed/index.ts`, and embed tests.
 5. Run `git diff --check` on every branch range.
-6. Run branch-local focused tests: lifecycle/framework tests on 01; those plus minimal serialization/deserialization tests on 02; artifact schema, loader, legacy adapter, and cross-language tests on 03; Sphinx unit/full-build/browser budgets on 04; the complete notebook matrix plus framework/mount smoke tests on 05.
+6. Run branch-local focused tests through `bokeh-embed`: lifecycle/framework tests on 01; those plus minimal serialization/deserialization tests on 02; artifact schema, loader, retained-facade/migration, and cross-language tests on 03; Sphinx unit/full-build/browser budgets on 04; the complete notebook matrix plus framework/mount smoke tests on 05. Before Python tests, verify the imported Bokeh path and use `python -m pytest -o pythonpath=src ...`.
 7. Confirm each task's worktree starts from its named branch and no task silently forks from the repository default branch.
-8. Keep source branches and old tasks until range-diffs, test results, unresolved known blockers, and task/branch/worktree mappings are recorded in `outputs/embed-stack-verification.md`.
+8. After every EMBED 00 contract commit, restack 01 through 05 sequentially and repeat adjacent-ancestry and `git diff --check` verification.
+9. Keep source branches and old tasks until range-diffs, test results, unresolved known blockers, and task/branch/worktree mappings are recorded in `outputs/embed-stack-verification.md`.

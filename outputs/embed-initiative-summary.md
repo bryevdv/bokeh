@@ -2,7 +2,7 @@
 
 ## Proposed initiative
 
-Replace Bokeh's accumulated embedding paths with one versioned artifact contract, one browser mount/lifecycle API, and one resource resolution model. Keep today's convenience APIs as migration facades, and make Sphinx, JavaScript framework adapters, and Jupyter first-class consumers of the same layers.
+Replace Bokeh's accumulated embedding paths with one versioned artifact contract, one browser mount/lifecycle API, and one resource resolution model. Use the Bokeh 4.0 breaking-release boundary to retain only useful thin conveniences, remove architecture-shaping legacy machinery, and make Sphinx, JavaScript framework adapters, and Jupyter first-class consumers of the same layers.
 
 The detailed design and full legacy API inventory are in `outputs/embedding-architecture-proposal.md`. The implementation stack and preserved source-task context are in `outputs/embed-stack-context.md`.
 
@@ -23,12 +23,13 @@ The initiative establishes four shared layers:
 
 Minimal model IDs become the default for static artifacts while live server, patch, comm, and notebook boundaries retain protocol-required IDs. React, Vue, Angular, Web Components, Sphinx, and Jupyter become adapters/consumers of the same runtime rather than alternate embedding implementations.
 
-## User-visible compatibility and migration
+## User-visible Bokeh 4.0 migration
 
-- Keep `file_html()`, `components()`, `save()`, and `show()` as useful facades; route them through the shared compiler.
-- Preserve legacy `JsonItem`, `RenderItem`, `embed_item()`, and `embed_items()` decoders while the new artifact schema is adopted.
-- Replace `autoload_static()` with a declarative external artifact reference and shared bootstrap, but deprecate only after the docs system and downstream users have a proven replacement.
-- Unify `server_document()` and `server_session()` around a server-source artifact while retaining old endpoints and signatures through the compatibility window.
+- Keep `file_html()`, `components()`, `save()`, and `show()` when they remain useful facades, and route them through the shared compiler/runtime.
+- Keep any other adapter only when it is clean, isolated, cheap, and unable to constrain the new artifact, resource, mount, or lifecycle contracts.
+- Remove `JsonItem`, `RenderItem`, per-embed autoload programs, wrapping flags, and notebook-private rendering machinery when a shim would preserve duplicate architecture. Prefer an explicit 4.0 migration error to a misleading compatibility layer.
+- Map server-document and existing-session use cases to a server-source artifact. Retain familiar functions only if their complete semantics, including selective roots, reduce cleanly to that source.
+- Do not promise a one- or two-major-release compatibility window for 3.x envelopes. `EmbedArtifact` receives independent, explicit schema-version rules.
 - Provide a before/after cookbook for every supported use case: complete pages, template fragments, named multi-root layouts, fetched JSON, external static payloads, new/existing server sessions, framework roots, static/live notebooks, custom templates, custom extensions, and host-owned resources.
 
 ## Primary in-tree success case: documentation builds
@@ -49,7 +50,7 @@ Jupyter follows the common artifact/runtime work. Static display, live handles, 
 EMBED 00  Contract, fixtures, coordination, and verification
 EMBED 01  BokehJS mount lifecycle and framework adapters
 EMBED 02  Minimal IDs integrated with lifecycle-safe construction
-EMBED 03  Artifact compiler, renderers, resource resolver/loader, legacy adapters
+EMBED 03  Artifact compiler, renderers, resource resolver/loader, retained facades and migration errors
 EMBED 04  Sphinx and bokeh-plot page aggregation
 EMBED 05  Jupyter and notebook host adapters
 ```
@@ -58,13 +59,15 @@ The branches are intentionally stackable in that order. Framework lifecycle prec
 
 ## Testing expectations
 
-Treat cross-language fixtures and host lifecycle tests as part of the design, not cleanup. Required coverage includes schema compatibility and errors, anonymous/shared/cyclic graphs, keyed multi-root and shared-document mounting, sequential/concurrent additive resource loading, disposal and rollback leak tests, every legacy adapter, page-level docs resource/request budgets, notebook output replacement and virtualization, bounded patch buffers, comm failures/timeouts, renderer rerender/disposal, trust/removal, safe and concurrent exports, and explicitly executed AnyWidget/marimo CI jobs.
+Treat cross-language fixtures and host lifecycle tests as part of the design, not cleanup. Required coverage includes schema compatibility and errors, anonymous/shared/cyclic graphs, keyed multi-root and shared-document mounting, sequential/concurrent additive resource loading, disposal and rollback leak tests, every retained facade and 4.0 migration diagnostic, page-level docs resource/request budgets, notebook output replacement and virtualization, bounded patch buffers, comm failures/timeouts, renderer rerender/disposal, trust/removal, safe and concurrent exports, and explicitly executed AnyWidget/marimo CI jobs.
+
+All six tasks run project commands through `/Users/bryan/anaconda3/bin/conda run -n bokeh-embed ...`. Python tests use `python -m pytest -o pythonpath=src ...` after verifying the import path; the shared environment must not be repointed with an editable install.
 
 ## Definition of done
 
-- All currently supported embedding use cases have a tested route through the shared layers or a documented compatibility adapter.
+- All currently supported embedding use cases have a tested 4.0 route through the shared layers, a useful thin facade, or an explicit migration recipe/error.
 - Static and live ID policies are explicit and cross-language tested.
 - Frameworks, docs, and Jupyter use the same mount/lifecycle and resource contracts.
 - The docs no longer ship all BokehJS bundles for each directive and enforce page budgets.
-- Old APIs can migrate incrementally without flag-day removal or return-shape breaks.
+- Bokeh 4.0 removes legacy envelopes and return-shape machinery that would distort the shared design while providing clear replacements for their use cases.
 - The replacement branch stack has recorded ancestry, range-diff/equivalence, conflict resolution, branch-local test results, and task/worktree mapping before old Codex tasks or source branches are removed.
