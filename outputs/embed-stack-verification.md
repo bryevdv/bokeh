@@ -21,12 +21,13 @@ This report is completed as branches and replacement tasks evolve. It supplement
 | EMBED 03 | `codex/embed-03-artifact-runtime` | `codex/embed-02-minimal-ids` | `/Users/bryan/work/trees/feaa/bokeh-embed` | attached and clean at `239cbf8a64`; implementation layer is empty |
 | EMBED 04 | `codex/embed-04-sphinx` | `codex/embed-03-artifact-runtime` | `/Users/bryan/work/trees/1395/bokeh-embed` | attached and clean at `239cbf8a64`; implementation layer is empty |
 | EMBED 05 | `codex/embed-05-jupyter` | `codex/embed-04-sphinx` | `/Users/bryan/work/trees/ad10/bokeh-embed` | attached and clean at `5ba3baa165` |
+| EMBED 06 | `codex/embed-06-panel` | `codex/embed-05-jupyter` | Codex-managed worktree, recorded by the new task at initialization | downstream impact/patch task starts from the final 05 tip |
 
 The project worktree `/Users/bryan/work/trees/bokeh-embed` is detached at the pre-handoff EMBED 00 contract tip and owns no stack branch.
 
 ## Dedicated environment
 
-Every project command on every task uses:
+Every project command on all seven tasks uses:
 
 ```text
 /Users/bryan/anaconda3/bin/conda run -n bokeh-embed ...
@@ -62,6 +63,7 @@ The environment came from `conda/environment-test-3.13.yml` and contains Python 
 | 03 | schema fixtures, Python compiler/renderers, BokehJS mount/loader, retained-facade and migration matrix | not implemented yet |
 | 04 | Sphinx unit tests, incremental/parallel/full docs builds, browser tests, size/request budgets | not implemented yet |
 | 05 | source frontend units, packaged-runtime tests, notebook Python/protocol tests, AnyWidget/marimo CI, Playwright, common mount smoke | source replay accounted for; latest-review blockers remain unresolved |
+| 06 | Panel impact inventory, Bokeh 4.0 workflow mapping, patch proposal/draft diff, focused and end-to-end downstream test matrix | new final-layer task; pending evaluation after 00–05 |
 
 The earlier EMBED 02 `dev313` run that failed five tests imported an editable primary checkout. It is classified as wrong-source contamination, not a branch failure. The clean 129/129 result above is the valid branch evidence.
 

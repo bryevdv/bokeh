@@ -44,6 +44,8 @@ The existing framework work provides the core `mount()`/`BokehMount` direction a
 
 Jupyter follows the common artifact/runtime work. Static display, live handles, server apps, Colab, AnyWidget, marimo, saved output, and export remain supported, but notebook code owns only host integration and transport. The latest review's cleanup, bounded-history, source-test, export-safety, concurrency, and test-matrix blockers are explicit initiative deliverables rather than follow-up debt.
 
+Panel is the final downstream validation layer. After the Bokeh stack is complete, audit Panel's embedding, resource, notebook, server, custom-model, and export integrations against the finished 4.0 contract and produce a concrete downstream patch proposal. Panel should migrate to the common layers rather than causing Bokeh to preserve removed internal envelopes or parallel lifecycle machinery.
+
 ## Delivery stack
 
 ```text
@@ -53,15 +55,16 @@ EMBED 02  Minimal IDs integrated with lifecycle-safe construction
 EMBED 03  Artifact compiler, renderers, resource resolver/loader, retained facades and migration errors
 EMBED 04  Sphinx and bokeh-plot page aggregation
 EMBED 05  Jupyter and notebook host adapters
+EMBED 06  Panel downstream impact assessment and patch proposal
 ```
 
-The branches are intentionally stackable in that order. Framework lifecycle precedes minimal-ID conflict resolution; both precede the artifact/runtime that consumes them. Sphinx is the first production static consumer. Jupyter is last because it is the most demanding live host and should validate shared contracts rather than define a parallel one.
+The branches are intentionally stackable in that order. Framework lifecycle precedes minimal-ID conflict resolution; both precede the artifact/runtime that consumes them. Sphinx is the first production static consumer. Jupyter validates the most demanding live-host cases. Panel runs last as a downstream compatibility audit against the completed design.
 
 ## Testing expectations
 
 Treat cross-language fixtures and host lifecycle tests as part of the design, not cleanup. Required coverage includes schema compatibility and errors, anonymous/shared/cyclic graphs, keyed multi-root and shared-document mounting, sequential/concurrent additive resource loading, disposal and rollback leak tests, every retained facade and 4.0 migration diagnostic, page-level docs resource/request budgets, notebook output replacement and virtualization, bounded patch buffers, comm failures/timeouts, renderer rerender/disposal, trust/removal, safe and concurrent exports, and explicitly executed AnyWidget/marimo CI jobs.
 
-All six tasks run project commands through `/Users/bryan/anaconda3/bin/conda run -n bokeh-embed ...`. Python tests use `python -m pytest -o pythonpath=src ...` after verifying the import path; the shared environment must not be repointed with an editable install.
+All seven tasks run project commands through `/Users/bryan/anaconda3/bin/conda run -n bokeh-embed ...`. Python tests use `python -m pytest -o pythonpath=src ...` after verifying the import path; the shared environment must not be repointed with an editable install.
 
 ## Definition of done
 
@@ -70,4 +73,5 @@ All six tasks run project commands through `/Users/bryan/anaconda3/bin/conda run
 - Frameworks, docs, and Jupyter use the same mount/lifecycle and resource contracts.
 - The docs no longer ship all BokehJS bundles for each directive and enforce page budgets.
 - Bokeh 4.0 removes legacy envelopes and return-shape machinery that would distort the shared design while providing clear replacements for their use cases.
+- Panel has an evidence-backed, file-specific downstream patch proposal and validation matrix against the completed stack.
 - The replacement branch stack has recorded ancestry, range-diff/equivalence, conflict resolution, branch-local test results, and task/worktree mapping before old Codex tasks or source branches are removed.

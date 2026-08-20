@@ -782,6 +782,19 @@ This phase must land before removing `autoload_static()` because it is the large
 - Add explicit migration errors for removed APIs where they are more helpful than a missing symbol or generic type error.
 - Delete temporary conversion layers before they become a second supported architecture.
 
+### Phase 7: Panel downstream impact and patch proposal
+
+Treat the completed Bokeh 4.0 embedding stack as the input, then evaluate Panel as a downstream consumer rather than allowing it to redefine the core contract:
+
+- inventory Panel's use of Bokeh embedding functions, `RenderItem`/`JsonItem`, resources, document/session APIs, custom models, comms, notebooks, server embedding, and static export;
+- map every affected Panel workflow to the final artifact, mount, lifecycle, resource, and migration APIs;
+- distinguish changes Panel should own from genuine reusable gaps in the Bokeh contract;
+- propose a concrete Panel patch, including affected files and symbols, migration behavior, tests, documentation, and sequencing against an identified Panel revision;
+- cover static HTML, templates, notebooks, Panel server, multiple roots, custom extensions, resource ownership, errors, readiness, and disposal;
+- do not add a Bokeh compatibility shim solely to preserve Panel internals when Panel can migrate cleanly.
+
+The deliverable is an evidence-backed impact assessment and a reviewable patch proposal or draft diff for Panel. Any newly discovered cross-layer contract issue is reported back to EMBED 00 before either repository commits to an incompatible workaround.
+
 ## Risks and decisions to settle in the design review
 
 ### ESM versus existing bundles
@@ -824,6 +837,7 @@ The redesign is ready to become the default when all of the following are true:
 - The docs build emits no per-plot loaders, no Bokeh assets on plot-free pages, and only one copy of each page requirement.
 - The current 300 directives build in parallel and incremental modes with deterministic asset names.
 - Notebook cold-cache, export, comms, clearing, and server-app cases pass browser tests.
+- Panel's supported embedding, notebook, server, resource, and export workflows have a file-specific patch proposal and validation matrix against the completed 4.0 contract.
 - Strict CSP/SRI and cross-origin/reverse-proxy server fixtures pass.
 - Minimal-ID and docs page-size/request benchmarks show measured improvement with protected baselines.
 

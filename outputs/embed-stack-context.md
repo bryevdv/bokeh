@@ -54,7 +54,7 @@ a6485cdf52 Fix increasing points in marimo demo
 
 ## Dedicated project environment
 
-All six replacement tasks use the dedicated `bokeh-embed` Conda environment for every project command, including Git, Python, Node.js, tests, and builds:
+All seven replacement tasks use the dedicated `bokeh-embed` Conda environment for every project command, including Git, Python, Node.js, tests, and builds:
 
 ```text
 /Users/bryan/anaconda3/bin/conda run -n bokeh-embed ...
@@ -167,6 +167,7 @@ branch-4.0
             └── codex/embed-03-artifact-runtime
                 └── codex/embed-04-sphinx
                     └── codex/embed-05-jupyter
+                        └── codex/embed-06-panel
 ```
 
 ### EMBED 00 — Contract and stack coordination
@@ -244,6 +245,19 @@ Acceptance:
 - export links are safe and portable, concurrent exports are correlation-safe, and Playwright is the only browser automation layer;
 - the detailed review test matrix above passes.
 
+### EMBED 06 — Panel downstream impact and patch proposal
+
+Run last, after EMBED 00–05 are complete. Evaluate Panel against the finished Bokeh 4.0 artifact/resource/mount/lifecycle design and propose the necessary downstream patch. Panel consumes the contract; it does not establish a parallel embedding architecture or force preservation of removed Bokeh internals.
+
+Acceptance:
+
+- identify the Panel revision and inventory every dependency on Bokeh embedding, `RenderItem`/`JsonItem`, resources, document/session APIs, custom models, comms, notebooks, server paths, and static export;
+- map each affected Panel user workflow to the final Bokeh 4.0 route and separate Panel-owned changes from genuine reusable Bokeh contract gaps;
+- produce a file- and symbol-specific Panel patch proposal or draft diff, with migration behavior, documentation changes, sequencing, and risk notes;
+- specify focused and end-to-end tests for static HTML, templates, notebooks, Panel server, multi-root output, custom extensions, resource ownership, readiness/errors, and disposal;
+- do not add a Bokeh compatibility shim solely for Panel internals when a clean Panel migration exists;
+- record any cross-layer issue back into the EMBED contract and verification ledger before implementation diverges.
+
 ## Bokeh 4.0 migration and compatibility policy
 
 - Bokeh 4.0 is intentionally allowed to break the 3.x embedding surface in order to establish one coherent architecture.
@@ -265,5 +279,5 @@ No old task should be removed until this audit passes.
 5. Run `git diff --check` on every branch range.
 6. Run branch-local focused tests through `bokeh-embed`: lifecycle/framework tests on 01; those plus minimal serialization/deserialization tests on 02; artifact schema, loader, retained-facade/migration, and cross-language tests on 03; Sphinx unit/full-build/browser budgets on 04; the complete notebook matrix plus framework/mount smoke tests on 05. Before Python tests, verify the imported Bokeh path and use `python -m pytest -o pythonpath=src ...`.
 7. Confirm each task's worktree starts from its named branch and no task silently forks from the repository default branch.
-8. After every EMBED 00 contract commit, restack 01 through 05 sequentially and repeat adjacent-ancestry and `git diff --check` verification.
+8. After every EMBED 00 contract commit, restack 01 through the current top branch sequentially and repeat adjacent-ancestry and `git diff --check` verification.
 9. Keep source branches and old tasks until range-diffs, test results, unresolved known blockers, and task/branch/worktree mappings are recorded in `outputs/embed-stack-verification.md`.
