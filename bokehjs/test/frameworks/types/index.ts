@@ -1,7 +1,7 @@
 import {createElement} from "react"
 import {h} from "vue"
 
-import {ColumnDataSource, Document, ModelResolver, Plotting, Range1d, mount, register_models, register_standard_models} from "@bokeh/bokehjs"
+import {ColumnDataSource, Document, ModelResolver, MountSource, Plotting, Range1d, mount, register_models, register_standard_models} from "@bokeh/bokehjs"
 import type {properties as p} from "@bokeh/bokehjs"
 import type {BokehComponent as AngularBokeh, BokehDocumentComponent as AngularBokehDocument, BokehRootDirective as AngularBokehRoot} from "@bokeh/angular"
 import {Bokeh as ReactBokeh, BokehDocument as ReactBokehDocument, BokehRoot as ReactBokehRoot} from "@bokeh/react"
@@ -22,9 +22,14 @@ const roots_document = new Document({roots})
 
 void mount(plot, document.createElement("div"))
 void mount(roots, document.createElement("div"))
-void mount(roots, document.createDocumentFragment(), {
-  root_targets: [document.createElement("div"), document.createElement("div")],
+const keyed_source = new MountSource(roots_document, {overview: plot, detail})
+const keyed_mount = mount(keyed_source, {
+  targets: {overview: document.createElement("div"), detail: document.createElement("div")},
 })
+void keyed_mount.ready
+void keyed_mount.root("overview")
+void keyed_mount.attach("overview", document.createElement("div"))
+keyed_mount.detach("detail")
 void mount(roots_document, document.createElement("div"))
 createElement(ReactBokeh, {model: roots})
 createElement(ReactBokehDocument, {models: roots},

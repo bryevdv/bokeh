@@ -1,7 +1,7 @@
-import {ColumnDataSource, ModelResolver, Plotting, Range1d, index, register_models, register_standard_models} from "@bokeh/bokehjs"
+import {ColumnDataSource, ModelResolver, MountError, Plotting, Range1d, index, register_models, register_standard_models} from "@bokeh/bokehjs"
 import type {BokehMount, MountOptions} from "@bokeh/bokehjs"
 import {DocumentMountController, MountController} from "@bokeh/framework"
-import type {BokehModel} from "@bokeh/framework"
+import type {BokehModel, BokehRootModel} from "@bokeh/framework"
 
 declare global {
   interface Window {
@@ -44,6 +44,24 @@ function assert(condition: unknown, message: string): asserts condition {
   }
 }
 
+function child_count(element: Element): number {
+  return element.childElementCount
+}
+
+function model_document(model: BokehRootModel) {
+  return model.document
+}
+
+async function wait_until(predicate: () => boolean, message: string): Promise<void> {
+  const deadline = Date.now() + 5000
+  while (!predicate()) {
+    if (Date.now() > deadline) {
+      throw new Error(message)
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  }
+}
+
 function create_plot() {
   const source = ColumnDataSource.create({data: {x: [0, 1, 2], y: [1, 3, 2]}})
   const plot = Plotting.figure({width: 260, height: 180, tools: [], toolbar_location: null})
@@ -82,18 +100,25 @@ async function validate_controller(model: ReturnType<typeof Plotting.figure>): P
   const active_mount = () => controller.mounted
   const first_target = document.createElement("div")
   const second_target = document.createElement("div")
+  const abort_target = document.createElement("div")
+  document.body.append(first_target, second_target, abort_target)
   const first = controller.start(model, first_target)
-  const second = controller.start(model, second_target)
+  let explicitly_disposed = 0
+  const second = controller.start(model, second_target, {
+    onDisposed: () => explicitly_disposed += 1,
+  })
 
   assert(await first == null, "a superseded mount unexpectedly completed")
   const mounted = await second
   assert(mounted != null, "the replacement mount didn't complete")
   assert(active_mount() == mounted, "the controller didn't expose the active mount")
   controller.dispose()
+  controller.dispose()
+  assert(explicitly_disposed == 1, "explicit controller disposal wasn't reported exactly once")
 
   const external_abort = new AbortController()
   let disposed = 0
-  const aborted = await controller.start(model, document.createElement("div"), {
+  const aborted = await controller.start(model, abort_target, {
     mountOptions: {signal: external_abort.signal},
     onDisposed: () => disposed += 1,
   })
@@ -101,6 +126,29 @@ async function validate_controller(model: ReturnType<typeof Plotting.figure>): P
   external_abort.abort()
   assert(active_mount() == null, "an externally aborted mount remained publicly active")
   assert(disposed == 1, "external abort didn't report disposal exactly once")
+
+  let mount_error: unknown = null
+  const failed = await controller.start(model, document.createElement("div"), {
+    onError: (error) => mount_error = error,
+  })
+  assert(failed == null, "a mount with a disconnected target unexpectedly completed")
+  assert(mount_error instanceof MountError && mount_error.kind == "target",
+    "the controller didn't surface a structured target error")
+  assert(model.document == null, "a failed controller mount retained temporary document ownership")
+
+  let callback_error: unknown = null
+  const callback_failed = await controller.start(model, first_target, {
+    onMounted: () => { throw new Error("application mount callback failed") },
+    onError: (error) => callback_error = error,
+  })
+  assert(callback_failed == null && callback_error instanceof Error,
+    "the controller didn't report a mount callback failure")
+  assert(model_document(model) == null && child_count(first_target) == 0,
+    "a mount callback failure retained temporary lifecycle state")
+  controller.dispose()
+  first_target.remove()
+  second_target.remove()
+  abort_target.remove()
 }
 
 async function validate_document_controller(): Promise<void> {
@@ -129,7 +177,7 @@ async function validate_document_controller(): Promise<void> {
   const mounted = await mounting
 
   assert(mounted.views.length == 2, "document controller didn't build both root views")
-  assert(first_target.childElementCount > 0 && second_target.childElementCount > 0,
+  assert(child_count(first_target) > 0 && child_count(second_target) > 0,
     "document controller didn't render into independent targets")
   assert(unrelated_content.isConnected, "document controller disturbed intervening framework content")
   assert(first.document == mounted.document && second.document == mounted.document && source.document == mounted.document,
@@ -137,14 +185,32 @@ async function validate_document_controller(): Promise<void> {
   assert(index.get(first) != null && index.get(second) != null, "distributed roots weren't globally indexed")
 
   detach_first()
+  await Promise.resolve()
+  assert(!mounted.disposed, "detaching one document slot disposed the shared mount")
+  assert(child_count(first_target) == 0, "detaching one document slot retained its Bokeh DOM")
+  assert(child_count(second_target) > 0, "detaching one document slot removed a sibling root")
+  assert(index.get(first) == null && index.get(second) != null,
+    "selective document detachment removed the wrong globally indexed views")
+  assert([first, second, source].every((model) => model.document == mounted.document),
+    "selective document detachment released shared document ownership")
+
+  const reattach_first = controller.attach(first, first_target)
+  await wait_until(() => index.get(first) != null, "reattaching a document slot didn't rebuild its root view")
+  assert(child_count(first_target) > 0 && child_count(second_target) > 0,
+    "reattaching a document slot disturbed sibling framework content")
+
+  reattach_first()
   detach_second()
   await Promise.resolve()
-  assert(mounted.disposed, "detaching a document slot didn't dispose its distributed mount")
-  assert(first_target.childElementCount == 0 && second_target.childElementCount == 0,
-    "distributed mount disposal retained Bokeh DOM")
-  assert([first, second, source].every((model) => model.document == null),
-    "distributed mount disposal retained temporary document ownership")
+  assert(!mounted.disposed, "detaching every document slot disposed the provider-owned mount")
+  assert(child_count(first_target) == 0 && child_count(second_target) == 0,
+    "selective document detachment retained Bokeh DOM")
+  assert([first, second, source].every((model) => model.document == mounted.document),
+    "detaching every document slot released provider-owned document state")
   controller.dispose()
+  assert(mounted.disposed, "disposing the document provider didn't dispose its shared mount")
+  assert([first, second, source].every((model) => model.document == null),
+    "document provider disposal retained temporary document ownership")
   first_target.remove()
   unrelated_content.remove()
   second_target.remove()
