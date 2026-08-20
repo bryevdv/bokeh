@@ -652,10 +652,6 @@ export class Dialog extends UIElement {
   declare properties: Dialog.Props
   declare __view_type__: DialogView
 
-  constructor(attrs?: Partial<Dialog.Attrs>) {
-    super(attrs)
-  }
-
   static {
     this.prototype.default_view = DialogView
 
