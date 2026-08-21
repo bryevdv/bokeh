@@ -619,14 +619,10 @@ export function mount(source: Mountable, target_or_options?: MountTarget | Mount
   return new BokehMount(normalized, target, mount_options, script)
 }
 
-export async function show<T extends UIElement | DOMNode>(obj: T, target?: MountTarget): Promise<ViewOf<T>>
-export async function show<T extends UIElement | DOMNode>(obj: readonly T[], target?: MountTarget): Promise<ViewOf<T>[]>
-export async function show(obj: Document, target?: MountTarget): Promise<ViewOf<HasProps>[]>
-export async function show(obj: UIElement | Document, target?: MountTarget): Promise<ViewOf<HasProps> | ViewOf<HasProps>[]>
+export function show<T extends ShowableRoot>(obj: T, target?: MountTarget): BokehMount<T>
+export function show<T extends ShowableRoot>(obj: readonly T[], target?: MountTarget): BokehMount<T>
+export function show(obj: Document, target?: MountTarget): BokehMount<HasProps>
 
-export async function show(obj: Document | Showable, target?: MountTarget): Promise<ViewOf<HasProps> | ViewOf<HasProps>[]> {
-  const mounted = mount(obj, target)
-  await mounted.ready
-  const result = isArray(obj) || obj instanceof Document ? mounted.views : mounted.views[0]
-  return result
+export function show(obj: Document | Showable, target?: MountTarget): BokehMount {
+  return mount(obj, target)
 }
