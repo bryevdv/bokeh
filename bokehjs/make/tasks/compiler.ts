@@ -1,4 +1,5 @@
 import cp from "node:child_process"
+import {copyFile} from "node:fs/promises"
 import {join} from "node:path"
 
 import * as esbuild from "esbuild"
@@ -29,4 +30,5 @@ task("compiler:build", [passthrough("compiler:ts")], async () => {
     treeShaking: true,
     sourcemap: true,
   })
+  await copyFile(outfile, join(build_dir.js, "compiler.cjs"))
 })

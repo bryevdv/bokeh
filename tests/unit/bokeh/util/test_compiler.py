@@ -20,6 +20,7 @@ import pytest ; pytest
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from threading import Event, Lock
 from unittest.mock import MagicMock, patch
 
@@ -80,6 +81,18 @@ def test_nodejs_compile_less() -> None:
 
     assert buc.nodejs_compile(""".bk-some-style color: green; }""", "less", "some.less") == \
         dict(error="ParseError: Unrecognised input in some.less on line 1, column 21:\n1 .bk-some-style color: green; }\n")
+
+def test__compiler_script_prefers_development_commonjs_bundle(tmp_path: Path) -> None:
+    js = tmp_path / "js"
+    js.mkdir()
+    packaged = js / "compiler.js"
+    packaged.touch()
+
+    assert buc._compiler_script(tmp_path) == packaged
+
+    development = js / "compiler.cjs"
+    development.touch()
+    assert buc._compiler_script(tmp_path) == development
 
 def test_Implementation() -> None:
     obj = buc.Implementation()
