@@ -17,10 +17,8 @@ import pytest ; pytest
 #-----------------------------------------------------------------------------
 
 # Standard library imports
-import hashlib
 import re
 import sys
-from os.path import abspath, join, split
 
 # Bokeh imports
 from bokeh.embed import file_html
@@ -34,49 +32,17 @@ import bokeh.core.templates as bct # isort:skip
 # Setup
 #-----------------------------------------------------------------------------
 
-TOP_PATH = abspath(join(split(bct.__file__)[0]))
-
-#-----------------------------------------------------------------------------
-# General API
-#-----------------------------------------------------------------------------
-
-#-----------------------------------------------------------------------------
-# Private API
-#-----------------------------------------------------------------------------
-
-def _crlf_cr_2_lf_bin(s):
-    return re.sub(b"\r\n|\r|\n", b"\n", s)
-
-#-----------------------------------------------------------------------------
-# Dev API
-#-----------------------------------------------------------------------------
-
-def compute_sha256(data):
-    sha256 = hashlib.sha256()
-    sha256.update(data)
-    return sha256.hexdigest()
-
 def get_html_lines(resource_mode: ResourcesMode) -> list[str]:
     p = figure()
     p.scatter(x=[], y=[])
     html = file_html(p, resources=Resources(resource_mode))
     return html.split('\n')
 
-pinned_template_sha256 = "9bcfc2a1515403eb002238ba6c83c5d3ef5eb7f0d27154bc77f8514ccc39ee9b"
-
-def test_autoload_template_has_changed() -> None:
-    """This is not really a test but a reminder that if you change the
-    autoload_nb_js.js template then you should make sure that insertion of
-    plots into notebooks is working as expected. In particular, this test was
-    created as part of https://github.com/bokeh/bokeh/issues/7125.
-    """
-    with open(join(TOP_PATH, "_templates/autoload_nb_js.js.jinja"), mode="rb") as f:
-        current_template_sha256 = compute_sha256(_crlf_cr_2_lf_bin(f.read()))
-        assert pinned_template_sha256 == current_template_sha256, """\
-            It seems that the template autoload_nb_js.js has changed.
-            If this is voluntary and that proper testing of plots insertion
-            in notebooks has been completed successfully, update this test
-            with the new file SHA256 signature."""
+def test_legacy_notebook_templates_are_removed() -> None:
+    assert not hasattr(bct, "DOC_NB_JS")
+    assert not hasattr(bct, "NOTEBOOK_RESOURCES_JS")
+    assert not hasattr(bct, "APP_NB_CLEANUP")
+    assert bct.PORTABLE_RESOURCES_JS is not None
 
 def test_legacy_render_item_templates_are_removed() -> None:
     assert not hasattr(bct, "DOC_JS")
