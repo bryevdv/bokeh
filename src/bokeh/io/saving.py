@@ -31,6 +31,7 @@ from jinja2 import Template
 from ..core.templates import FILE
 from ..resources import Resources
 from ..settings import settings
+from ._output_capture import record_output
 from .state import curstate
 from .util import default_filename
 
@@ -91,6 +92,11 @@ def save(obj: Showable, filename: PathLike | None = None, resources: ResourcesLi
         str: the filename where the HTML file is saved.
 
     '''
+
+    if record_output(
+        "save", obj, filename=filename, resources=resources, title=title, template=template, state=state,
+    ):
+        return ""
 
     if state is None:
         state = curstate()

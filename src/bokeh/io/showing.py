@@ -32,6 +32,7 @@ from typing import (
 from ..models.dom import DOMNode
 from ..models.ui import UIElement
 from ..util.browser import NEW_PARAM, get_browser_controller
+from ._output_capture import record_output
 from .notebook import DEFAULT_JUPYTER_URL, run_notebook_hook
 from .saving import save
 from .state import curstate
@@ -156,6 +157,12 @@ def show(
         ``push_notebook``, None otherwise.
 
     '''
+    if record_output(
+        "show", obj, browser=browser, new=new, notebook_handle=notebook_handle,
+        notebook_url=notebook_url, **kwargs,
+    ):
+        return None
+
     from ..models.dom import DOMNode
     from ..models.ui import UIElement
 

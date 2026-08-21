@@ -18,18 +18,17 @@ log = logging.getLogger(__name__)
 # -----------------------------------------------------------------------------
 
 # Standard library imports
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 # Bokeh imports
 from bokeh.application.handlers.code_runner import CodeRunner
 from bokeh.application.handlers.handler import Handler
-from bokeh.io.doc import curdoc, set_curdoc
+from bokeh.document import Document
+from bokeh.io._output_capture import OutputCapture, capture_output
+from bokeh.io.doc import patch_curdoc
 
 if TYPE_CHECKING:
-    from types import ModuleType
-
     from bokeh.core.types import PathLike
-    from bokeh.document import Document
 
 # -----------------------------------------------------------------------------
 # Globals and constants
@@ -49,17 +48,13 @@ __all__ = (
 
 
 class ExampleHandler(Handler):
-    """A stripped-down handler similar to CodeHandler but that does
-    some appropriate monkeypatching.
-
-    """
-
-    _output_funcs = ["output_notebook", "output_file", "reset_output"]
-    _io_funcs = ["show", "save"]
+    """Execute example code with context-local output capture."""
 
     def __init__(self, source: str, filename: PathLike) -> None:
         super().__init__()
         self._runner = CodeRunner(source, filename, [])
+        self._capture = OutputCapture()
+        self._documents: tuple[Document, ...] = ()
 
     def modify_document(self, doc: Document) -> None:
         if self.failed:
@@ -70,66 +65,15 @@ class ExampleHandler(Handler):
 
         doc.modules.add(module)
 
-        orig_curdoc = curdoc()
-        set_curdoc(doc)
-
-        old_io, old_doc = self._monkeypatch()
-
-        try:
+        with patch_curdoc(doc), capture_output(doc) as captured:
             self._runner.run(module, lambda: None)
-        finally:
-            self._unmonkeypatch(old_io, old_doc)
-            set_curdoc(orig_curdoc)
+        self._capture = captured
 
-    def _monkeypatch(self) -> tuple[dict[str, Any], type[Document]]:
-        def _pass(*args: Any, **kw: Any) -> None:
-            pass
-
-        def _add_root(obj: Any, *args: Any, **kw: Any) -> None:
-            curdoc().add_root(obj)
-
-        def _curdoc(*args: Any, **kw: Any) -> Document:
-            return curdoc()
-
-        # these functions are transitively imported from io into plotting,
-        # so we have to patch them all. Assumption is that no other patching
-        # has occurred, i.e. we can just save the funcs being patched once,
-        # from io, and use those as the originals to replace everywhere
-        import bokeh.io as io
-        import bokeh.plotting as p
-
-        mods: list[ModuleType] = [io, p]
-
-        old_io: dict[str, Any] = {}
-        for f in self._output_funcs + self._io_funcs:
-            old_io[f] = getattr(io, f)
-
-        for mod in mods:
-            for f in self._output_funcs:
-                setattr(mod, f, _pass)
-            for f in self._io_funcs:
-                setattr(mod, f, _add_root)
-
-        import bokeh.document as d
-
-        old_doc = d.Document
-        d.Document = _curdoc # type: ignore[assignment,misc]
-
-        return old_io, old_doc
-
-    def _unmonkeypatch(self, old_io: dict[str, Any], old_doc: type[Document]) -> None:
-        import bokeh.io as io
-        import bokeh.plotting as p
-
-        mods: list[ModuleType] = [io, p]
-
-        for mod in mods:
-            for f in old_io:
-                setattr(mod, f, old_io[f])
-
-        import bokeh.document as d
-
-        d.Document = old_doc # type: ignore[misc]
+        documents: list[Document] = []
+        for value in module.__dict__.values():
+            if isinstance(value, Document) and value.roots and value is not doc and value not in documents:
+                documents.append(value)
+        self._documents = tuple(documents)
 
     @property
     def failed(self) -> bool:
@@ -146,6 +90,14 @@ class ExampleHandler(Handler):
     @property
     def doc(self) -> str | None:
         return self._runner.doc
+
+    @property
+    def captured(self) -> OutputCapture:
+        return self._capture
+
+    @property
+    def documents(self) -> tuple[Document, ...]:
+        return self._documents
 
 # -----------------------------------------------------------------------------
 # Private API
