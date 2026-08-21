@@ -270,8 +270,13 @@ def test_typed_renderers_cover_fragment_page_external_and_mime(tmp_path: Path) -
     assert list(fragment.divs) == ["summary", "detail"]
     assert "data-bokeh-root=\"summary\"" in fragment.html
     assert "application/vnd.bokeh.embed+json" in fragment.script
+    assert "data-bokeh-artifact-bootstrap" in fragment.script
+    assert f'data-bokeh-artifact="{artifact.fingerprint}"' in fragment.script
     assert "RenderItem" not in fragment.script
     assert " id=" not in fragment.html
+    assert fragment.resources.policy.mode == "none"
+    assert fragment.resources.requirements == artifact.requires
+    assert fragment.resources.assets == ()
     assert fragment.build_fingerprint == artifact.fragment(resources="none").build_fingerprint
     assert fragment.build_fingerprint != artifact.fragment(resources="cdn").build_fingerprint
 
