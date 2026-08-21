@@ -114,7 +114,7 @@ export class ViewQuery extends AbstractViewQuery {
 export class ViewManager extends AbstractViewQuery {
   protected readonly _roots: Set<View>
 
-  constructor(roots: Iterable<View> = [], protected global?: ViewManager) {
+  constructor(roots: Iterable<View> = []) {
     super()
     this._roots = new Set(roots)
   }
@@ -152,12 +152,10 @@ export class ViewManager extends AbstractViewQuery {
 
   add(view: View): void {
     this._roots.add(view)
-    this.global?.add(view)
   }
 
   delete(view: View): void {
     this._roots.delete(view)
-    this.global?.delete(view)
   }
 
   remove(view: View): void {

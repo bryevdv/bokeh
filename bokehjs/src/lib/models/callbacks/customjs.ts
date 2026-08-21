@@ -8,8 +8,7 @@ import type {Model} from "../../model"
 import {logger} from "core/logging"
 import type {Dict} from "core/types"
 import {isFunction} from "core/util/types"
-import type {ViewManager} from "core/view_manager"
-import {index} from "embed/standalone"
+import {ViewManager} from "core/view_manager"
 
 type KV = {[key: string]: unknown}
 type Context = {index: ViewManager}
@@ -118,7 +117,7 @@ export class CustomJS extends Callback {
 
   async execute(obj: Model, data: KV = {}): Promise<unknown> {
     const {func, module} = await this.state()
-    const context = {index}
+    const context = {index: this.document?.views_manager ?? new ViewManager()}
     if (module) {
       return func(to_object(this.args), obj, data, context)
     } else {
@@ -131,7 +130,7 @@ export class CustomJS extends Callback {
       throw new Error(`${this.type} needs to be compiled first`)
     }
     const {func, module} = this._state
-    const context = {index}
+    const context = {index: this.document?.views_manager ?? new ViewManager()}
     if (module) {
       return func(to_object(this.args), obj, data, context)
     } else {

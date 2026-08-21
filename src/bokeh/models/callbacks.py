@@ -155,9 +155,10 @@ class CustomJS(CustomCode):
 
     The additional document context is composed of the following members:
 
-    * ``index``: The view manager governing all views in the current
-      instance of ``Bokeh``. If only one instance of ``Bokeh`` is
-      loaded, then this is equivalent to using ``Bokeh.index``.
+    * ``index``: The mount-scoped view manager governing views in the callback's
+      current document. Prefer passing models explicitly through ``args``;
+      ``index`` remains available when a callback specifically needs to query a
+      view owned by its mount.
 
     This function can be an asynchronous function (``async function () {}`` or
     ``async () => {}``) if for example external resources are needed, which

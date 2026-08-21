@@ -1,4 +1,4 @@
-export {add_document_standalone, mount_document_standalone, StandaloneMount, index} from "./standalone"
+export {add_document_standalone, mount_document_standalone, StandaloneMount} from "./standalone"
 export type {StandaloneMountOptions} from "./standalone"
 export {add_document_from_session, cancel_session_for_element, close_session_for_document} from "./server"
 export {create_notebook_patch_receiver, NotebookPatchError} from "./notebook"
