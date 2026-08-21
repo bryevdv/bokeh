@@ -28,6 +28,42 @@ Standalone documents
 This section describes different ways to publish and embed standalone Bokeh
 documents.
 
+Embedding artifacts
+~~~~~~~~~~~~~~~~~~~
+
+Bokeh 4.0 uses one versioned embedding artifact for complete pages, template
+fragments, JSON endpoints, external static payloads, and rich display. Compile
+the artifact once and choose a delivery form independently:
+
+.. code-block:: python
+
+    from bokeh.embed import embed
+
+    artifact = embed({"summary": summary_plot, "detail": detail_plot})
+    page = artifact.page(resources="cdn", title="Report")
+    fragment = artifact.fragment(resources="none")
+    json_payload = artifact.to_json_string()
+    external = artifact.external("/assets/report.json", resources="none")
+
+Artifacts address roots by stable logical keys. Browser targets are supplied
+when mounting and are not stored in reusable data:
+
+.. code-block:: javascript
+
+    const handle = Bokeh.mount(artifact, {
+      targets: {summary: summaryElement, detail: detailElement},
+      resources: "auto",
+    })
+    await handle.ready
+
+    // Dispose from a framework unmount hook or when replacing the output.
+    await handle.dispose()
+
+The artifact declares what it requires. The page or host separately chooses
+CDN, inline/offline, server, relative/absolute, or host-owned ``none`` resource
+delivery. BokehJS resource loading is promise-based and deduplicates concurrent
+and later additive requirements.
+
 .. _ug_output_embed_standalone_html:
 
 HTML files
@@ -42,18 +78,21 @@ data and are fully portable while still providing interactive tools
 .. code-block:: python
 
     from bokeh.plotting import figure
-    from bokeh.resources import CDN
-    from bokeh.embed import file_html
+    from bokeh.embed import embed
 
     plot = figure()
     plot.scatter([1,2], [3,4])
 
-    html = file_html(plot, CDN, "my plot")
+    html = embed(plot).page(resources="cdn", title="my plot")
 
 You can save the returned HTML text to a file using standard Python file
 operations. You can also provide your own template for the HTML output
 and pass in custom, or additional, template variables. For more details,
 see the |file_html| documentation.
+
+The familiar |file_html| function remains as a thin facade over this artifact
+page renderer. File-backed |save| and |show| routes therefore use the same
+compiler and resource policy.
 
 This is a low-level, explicit way to generate an HTML file, which can be
 useful for web applications such as Flask apps.
@@ -67,6 +106,14 @@ web browser whereas |save| creates an HTML document and saves it locally.
 
 JSON items
 ~~~~~~~~~~
+
+.. warning::
+    ``json_item()`` and ``Bokeh.embed.embed_item()`` were removed in Bokeh 4.0.
+    Return ``embed(plot).to_json()`` from the endpoint, parse the versioned
+    artifact in the browser, and call ``Bokeh.mount(artifact, {targets: ...})``.
+    Targets now belong to the host page rather than the reusable payload. The
+    examples below describe the Bokeh 3.x contract and are retained temporarily
+    as migration context.
 
 Bokeh can also supply JSON data that BokehJS can use to render a standalone
 Bokeh document in a specified ``<div>``. The |json_item| function accepts a
@@ -141,6 +188,14 @@ For a complete example, see :bokeh-tree:`examples/output/apis/json_item.py`.
 
 Components
 ~~~~~~~~~~
+
+In Bokeh 4.0, |components| is a thin facade over
+``embed(models).fragment(resources="none")`` and retains only its canonical
+``(script, divs)`` return shape. For composable output, use the typed fragment's
+``script``, ``mounts``, ``divs``, ``requirements``, and ``resources`` fields.
+The old wrapping flags were removed and raise a migration error. Generated
+markup uses logical ``data-bokeh-root`` attributes and the shared artifact
+bootstrap; it does not contain ``RenderItem`` data or generated DOM IDs.
 
 You can also have Bokeh return individual components of a standalone document
 to embed them one by one with the |components| function. This function returns
@@ -265,6 +320,8 @@ the ``x.y.z``:
             crossorigin="anonymous"></script>
     <script src="https://cdn.bokeh.org/bokeh/release/bokeh-mathjax-x.y.z.min.js"
             crossorigin="anonymous"></script>
+    <script src="https://cdn.bokeh.org/bokeh/release/bokeh-api-x.y.z.min.js"
+            crossorigin="anonymous"></script>
 
 Only the Bokeh core library ``bokeh-x.y.z.min.js`` is always required. The
 other scripts are optional and only need to be included if you want to use
@@ -278,6 +335,8 @@ corresponding features:
   :ref:`WebGL support <ug_output_webgl>`.
 * the ``"bokeh-mathjax"`` files are required to enable
   :ref:`MathJax support <ug_styling_mathtext>`.
+* The ``"bokeh-api"`` file provides the artifact mount lifecycle and must be
+  loaded after the core BokehJS file.
 
 For example, to use version ``3.0.0`` with support for widgets, tables, and
 math text, include the following in your HTML:
@@ -457,6 +516,13 @@ You can see an example of multiple plot generation by executing the following:
 Autoloading scripts
 ~~~~~~~~~~~~~~~~~~~
 
+.. warning::
+    ``autoload_static()`` was removed in Bokeh 4.0. Save
+    ``artifact.to_json_string()`` as a data payload and use
+    ``artifact.external(payload_url=...)``. The replacement references data and
+    invokes one shared declaration bootstrap instead of generating a unique
+    loader program. The examples below describe the removed 3.x API.
+
 You can also embed standalone documents with the |autoload_static| function.
 This function provides a ``<script>`` tag that replaces itself with a Bokeh
 plot. This script also checks for BokehJS and loads it if necessary. This
@@ -513,6 +579,13 @@ session and document or outputs a specific, existing session.
 
 App documents
 ~~~~~~~~~~~~~
+
+Bokeh 4.0 represents a server application as a structured server-source
+artifact. ``embed_server(url, ...).fragment()`` is the primary route;
+|server_document| remains a thin facade. The browser obtains a signed bootstrap
+from ``/embed.json`` and exposes HTTP, WebSocket, session, render, readiness, and
+disposal through the same ``BokehMount`` used by standalone artifacts. The old
+``/autoload.js`` program endpoint is not part of the 4.0 route.
 
 If an application is running on a Bokeh server that makes it available at some
 URL, you will typically want to embed the entire application in a web page.
