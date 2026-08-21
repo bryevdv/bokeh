@@ -22,6 +22,7 @@ from unittest.mock import MagicMock, patch
 
 # Bokeh imports
 from bokeh.core.templates import FILE
+from bokeh.io.jupyter import FILE_MIME_TYPE
 from bokeh.io.state import curstate
 from bokeh.models import Plot
 from bokeh.resources import INLINE
@@ -36,6 +37,44 @@ import bokeh.io.saving as bis # isort:skip
 #-----------------------------------------------------------------------------
 # General API
 #-----------------------------------------------------------------------------
+
+@patch("bokeh.io.saving._save_helper")
+def test_save_returns_string_with_safe_notebook_link(mock_save_helper: MagicMock) -> None:
+    result = bis.save(
+        Plot(),
+        filename=Path("reports") / 'plot & "details".html',
+        resources=INLINE,
+        title="title",
+    )
+
+    assert isinstance(result, str)
+    assert result == str(Path.cwd() / "reports" / 'plot & "details".html')
+    html = (
+        '<a href="reports/plot%20%26%20%22details%22.html" target="_blank" rel="noopener noreferrer">'
+        "Open reports/plot &amp; &quot;details&quot;.html</a>"
+    )
+    payload = {
+        "protocol_version": 2,
+        "kind": "file",
+        "path": 'reports/plot & "details".html',
+    }
+    assert result._repr_html_() == html
+    text = 'Bokeh HTML file saved: reports/plot & "details".html'
+    assert result._repr_mimebundle_() == {FILE_MIME_TYPE: payload, "text/html": html, "text/plain": text}
+    assert result._repr_mimebundle_(include={FILE_MIME_TYPE}) == {FILE_MIME_TYPE: payload}
+    assert result._repr_mimebundle_(exclude={FILE_MIME_TYPE}) == {"text/html": html, "text/plain": text}
+    mock_save_helper.assert_called_once()
+
+
+@pytest.mark.parametrize("filename", [Path("/private/output.html"), Path("..") / "output.html"])
+@patch("bokeh.io.saving._save_helper")
+def test_save_omits_rich_paths_that_are_not_notebook_relative(mock_save_helper: MagicMock, filename: Path) -> None:
+    result = bis.save(Plot(), filename=filename, resources=INLINE, title="title")
+
+    assert result._repr_mimebundle_() == {
+        "text/plain": "Bokeh HTML file saved. Open it from the notebook file browser.",
+    }
+    assert str(filename) not in next(iter(result._repr_mimebundle_().values()))
 
 #-----------------------------------------------------------------------------
 # Dev API

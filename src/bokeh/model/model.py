@@ -49,7 +49,7 @@ from ..core.serialization import (
 from ..events import Event
 from ..themes import default as default_theme
 from ..util.callback_manager import EventCallbackManager, PropertyCallbackManager
-from ..util.serialization import make_id
+from ..util.serialization import make_id, _reserve_id
 from .docs import html_repr, process_example
 from .util import (
     HasDocumentRef,
@@ -125,6 +125,7 @@ class Model(HasProps, HasDocumentRef, PropertyCallbackManager, EventCallbackMana
         if id is not None:
             if args or kwargs:
                 raise ValueError("'id' cannot be used together with property initializers")
+            _reserve_id(id)
             obj._id = id
         else:
             obj._id = make_id()
@@ -636,7 +637,17 @@ class Model(HasProps, HasDocumentRef, PropertyCallbackManager, EventCallbackMana
         self.document = None
         default_theme.apply_to_model(self)
 
-    def _repr_html_(self) -> str:
+    def _repr_html_(self) -> str | None:
+        # marimo checks rich representations in HTML-first order. Returning
+        # the structural debug representation here would prevent its generic
+        # formatter from reaching Bokeh's AnyWidget MIME representation.
+        try:
+            from ..io.notebook import _is_marimo_runtime
+
+            if _is_marimo_runtime():
+                return None
+        except ImportError:
+            pass
         return html_repr(self)
 
     def _sphinx_height_hint(self) -> int|None:

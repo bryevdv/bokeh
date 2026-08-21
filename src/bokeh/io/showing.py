@@ -26,21 +26,25 @@ from typing import (
     Any,
     Sequence,
     TypeGuard,
+    cast,
 )
 
 # Bokeh imports
 from ..models.dom import DOMNode
 from ..models.ui import UIElement
-from ..util.browser import NEW_PARAM, get_browser_controller
-from .notebook import DEFAULT_JUPYTER_URL, run_notebook_hook
+from ..util.browser import get_browser_controller
+from .notebook import show_doc
 from .saving import save
 from .state import curstate
 
 if TYPE_CHECKING:
     from ..application.application import Application
-    from ..application.handlers.function import ModifyDoc
-    from ..util.browser import BrowserLike, BrowserTarget
-    from .notebook import CommsHandle, ProxyUrlFunc
+    from ..embed.resources import ResourcePolicy
+    from ..model import Model
+    from ..resources import Resources
+    from ..util.browser import BrowserLike
+    from .jupyter_app import NotebookApplication
+    from .notebook import ApplicationViewHandle, DocumentViewHandle
     from .state import State
 
 #-----------------------------------------------------------------------------
@@ -60,100 +64,43 @@ type OneOrMore[T] = T | Sequence[T]
 type Showable = OneOrMore[UIElement | DOMNode]
 
 def show(
-    obj: Showable | Application | ModifyDoc,
-    browser: str | None = None,
-    new: BrowserTarget = "tab",
-    notebook_handle: bool = False,
-    notebook_url: str | ProxyUrlFunc = DEFAULT_JUPYTER_URL,
+    obj: Showable | NotebookApplication,
+    resources: ResourcePolicy | Resources | None = None,
     **kwargs: Any,
-) -> CommsHandle | None:
+) -> ApplicationViewHandle | DocumentViewHandle | None:
     '''Immediately display a Bokeh object or application.
 
     :func:`show` may be called multiple times in a single Jupyter notebook
     cell to display multiple objects. The objects are displayed in order.
 
     Args:
-        obj (UIElement or UIElement[] or DOMNode or DOMNode[] or Application or callable) :
+        obj (UIElement or UIElement[] or DOMNode or DOMNode[] or NotebookApplication) :
             A Bokeh object to display.
 
             Bokeh plots, widgets, layouts (i.e. rows and columns) may be
-            passed to ``show`` in order to display them. If |output_file|
-            has been called, the output will be saved to an HTML file, which is also
-            opened in a new browser window or tab. If |output_notebook|
-            has been called in a Jupyter notebook, the output will be inline
-            in the associated notebook output cell.
+            passed to ``show`` in order to display them. Outside an interactive
+            notebook kernel, the output is saved to an HTML file and opened in
+            the default browser. In a notebook, Bokeh displays the output inline;
+            use :func:`~bokeh.io.save` explicitly to create an external HTML file.
 
-            In a Jupyter notebook, a Bokeh application or callable may also
-            be passed. A callable will be turned into an Application using a
-            ``FunctionHandler``. The application will be run and displayed
-            inline in the associated notebook output cell.
+            In a Jupyter notebook, a managed application returned by
+            :func:`~bokeh.io.serve` may be passed in any later cell. Direct
+            Application and callable arguments are rejected with a
+            migration message; start them explicitly with ``serve()``.
 
-        browser (str, optional) :
-            Specify the browser to use to open output files(default: None)
+        resources (Resources or ResourcePolicy, optional) :
+            Select explicit BokehJS resource delivery for notebook output,
+            including inline/offline, CDN, server, host-owned, and CSP-aware
+            policies. Resolved assets are stored once per kernel and shared by
+            subsequent outputs using the same exact configuration.
 
-            For file output, the **browser** argument allows for specifying
-            which browser to display in, e.g. "safari", "firefox", "opera",
-            "windows-default". Not all platforms may support this option, see
-            the documentation for the standard library
-            :doc:`webbrowser <python:library/webbrowser>` module for
-            more information
-
-        new (str, optional) :
-            Specify the browser mode to use for output files (default: "tab")
-
-            For file output, opens or raises the browser window showing the
-            current output file.  If **new** is 'tab', then opens a new tab.
-            If **new** is 'window', then opens a new window.
-
-        notebook_handle (bool, optional) :
-            Whether to create a notebook interaction handle (default: False)
-
-            For notebook output, toggles whether a handle which can be used
-            with ``push_notebook`` is returned. Note that notebook handles
-            only apply to standalone plots, layouts, etc. They do not apply
-            when showing Applications in the notebook.
-
-        notebook_url (URL, optional) :
-            Location of the Jupyter notebook page (default: "localhost:8888")
-
-            When showing Bokeh applications, the Bokeh server must be
-            explicitly configured to allow connections originating from
-            different URLs. This parameter defaults to the standard notebook
-            host and port. If you are running on a different location, you
-            will need to supply this value for the application to display
-            properly. If no protocol is supplied in the URL, e.g. if it is
-            of the form "localhost:8888", then "http" will be used.
-
-            ``notebook_url`` can also be a function that takes one int for the
-            bound server port.  If the port is provided, the function needs
-            to generate the full public URL to the bokeh server.  If None
-            is passed, the function is to generate the origin URL.
-
-            If the environment variable JUPYTER_BOKEH_EXTERNAL_URL is set
-            to the external URL of a JupyterHub, notebook_url is overridden
-            with a callable which enables Bokeh to traverse the JupyterHub
-            proxy without specifying this parameter.
-
-    Some parameters are only useful when certain output modes are active:
-
-    * The ``browser`` and ``new`` parameters only apply when |output_file|
-      is active.
-
-    * The ``notebook_handle`` parameter only applies when |output_notebook|
-      is active, and non-Application objects are being shown. It is only
-      supported in Jupyter notebook and raises an exception for other notebook
-      types when it is True.
-
-    * The ``notebook_url`` parameter only applies when showing Bokeh
-      Applications in a Jupyter notebook.
-
-    * Any additional keyword arguments are passed to :class:`~bokeh.server.Server` when
-      showing a Bokeh app (added in version 1.1)
+    Additional keyword arguments are not accepted.
 
     Returns:
-        When in a Jupyter notebook (with |output_notebook| enabled)
-        and ``notebook_handle=True``, returns a handle that can be used by
-        ``push_notebook``, None otherwise.
+        In a Jupyter notebook, returns a connected view handle. Standalone
+        objects synchronize Python property changes automatically, while a
+        managed application creates an independent ASGI session. Returns None
+        for file or browser output outside a notebook.
 
     '''
     from ..models.dom import DOMNode
@@ -161,17 +108,38 @@ def show(
 
     state = curstate()
 
+    from .jupyter_app import NotebookApplication
+    from .notebook import notebook_environment
+
+    if isinstance(obj, NotebookApplication):
+        if not notebook_environment():
+            raise RuntimeError("show(serve(...)) requires an interactive notebook kernel")
+        if kwargs:
+            names = ", ".join(sorted(kwargs))
+            raise ValueError(
+                f"Unexpected show() options for a managed notebook application: {names}. "
+                "Configure ASGI server options on serve(...).",
+            )
+        from .notebook import show_hosted_app
+        return show_hosted_app(obj, state, resources)
+
     if isinstance(obj, UIElement) or isinstance(obj, DOMNode) or isinstance(obj, Sequence):
-        return _show_with_state(obj, state, browser, new, notebook_handle=notebook_handle)
+        if kwargs:
+            names = ", ".join(sorted(kwargs))
+            raise ValueError(f"Unexpected show() options for a standalone object: {names}")
+        notebook_options: dict[str, Any] = {}
+        if resources is not None:
+            notebook_options["resources"] = resources
+        return _show_with_state(obj, state, **notebook_options)
 
     def is_application(obj: Any) -> TypeGuard[Application]:
         return getattr(obj, '_is_a_bokeh_application_class', False)
 
     if is_application(obj) or callable(obj): # TODO (bev) check callable signature more thoroughly
-        # This ugliness is to prevent importing bokeh.application (which would bring
-        # in Tornado) just in order to show a non-server object
-        assert state.notebook_type is not None
-        return run_notebook_hook(state.notebook_type, 'app', obj, state, notebook_url, **kwargs)
+        raise RuntimeError(
+            "Bokeh 4.0 no longer starts an application from show(...). "
+            "Use app = serve(..., notebook_url=...), then show(app) in an interactive notebook.",
+        )
 
     raise ValueError(_BAD_SHOW_MSG)
 
@@ -183,40 +151,36 @@ def show(
 # Private API
 #-----------------------------------------------------------------------------
 
-_BAD_SHOW_MSG = """Invalid object to show. The object to passed to show must be one of:
+_BAD_SHOW_MSG = """Invalid object to show. The object passed to show must be one of:
 
 * a UIElement (e.g. a plot, figure, widget or layout)
 * a DOMNode (e.g. a Div)
-* a Bokeh Application
-* a callable suitable to an application FunctionHandler
+* a managed notebook application returned by bokeh.io.serve
 """
 
-def _show_file_with_state(obj: Showable, state: State, new: BrowserTarget, controller: BrowserLike) -> None:
+def _show_file_with_state(obj: Showable, state: State, controller: BrowserLike) -> None:
     '''
 
     '''
     filename = save(obj, state=state)
-    controller.open("file://" + filename, new=NEW_PARAM[new])
+    controller.open("file://" + filename, new=2)
 
-def _show_with_state(obj: Showable, state: State, browser: str | None,
-        new: BrowserTarget, notebook_handle: bool = False) -> CommsHandle | None:
+def _show_with_state(obj: Showable, state: State,
+        resources: ResourcePolicy | Resources | None = None) -> DocumentViewHandle | None:
     '''
 
     '''
-    controller = get_browser_controller(browser=browser)
+    from .notebook import notebook_environment
 
-    comms_handle = None
-    shown = False
+    if notebook_environment():
+        notebook_options: dict[str, Any] = {}
+        if resources is not None:
+            notebook_options["resources"] = resources
+        return show_doc(cast("Model | Sequence[UIElement]", obj), state, **notebook_options)
 
-    if state.notebook:
-        assert state.notebook_type is not None
-        comms_handle = run_notebook_hook(state.notebook_type, 'doc', obj, state, notebook_handle)
-        shown = True
-
-    if state.file or not shown:
-        _show_file_with_state(obj, state, new, controller)
-
-    return comms_handle
+    controller = get_browser_controller()
+    _show_file_with_state(obj, state, controller)
+    return None
 
 #-----------------------------------------------------------------------------
 # Code
