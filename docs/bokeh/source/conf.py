@@ -115,6 +115,8 @@ bokeh_example_subdirs = [
 ]
 
 bokeh_missing_google_api_key_ok = False
+bokeh_plot_callback_policy = "suppress"
+bokeh_plot_resources = os.environ.get("BOKEH_PLOT_RESOURCES")
 
 if "GOOGLE_API_KEY" not in os.environ:
     print("GOOGLE_API_KEY not found in environment")
