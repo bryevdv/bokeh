@@ -32,7 +32,6 @@ log = logging.getLogger(__name__)
 #-----------------------------------------------------------------------------
 
 # Standard library imports
-import asyncio
 import atexit
 import io
 import queue
@@ -109,6 +108,18 @@ def get_screenshot_as_png(
     '''
     theme = (state or curstate()).document.theme
     html = get_layout_html(obj, resources=resources, width=width, height=height, theme=theme)
+
+    return get_screenshot_as_png_from_html(html, driver=driver, timeout=timeout, scale_factor=scale_factor)
+
+
+def get_screenshot_as_png_from_html(
+    html: str,
+    *,
+    driver: Browser | BrowserContext | None = None,
+    timeout: int = 5,
+    scale_factor: float = 1,
+) -> Image.Image:
+    '''Capture a fully assembled Bokeh HTML document as one PNG image.'''
 
     png_bytes, vw, vh, dpr = _playwright_render(html, "", timeout, scale_factor=scale_factor, driver=driver)
 
@@ -273,6 +284,9 @@ def wait_until_render_complete(page: Page, timeout: int) -> None:
             timeout=timeout_ms,
         )
     except Exception as e:
+        error = page.evaluate("window._bokeh_export_error ?? null")
+        if isinstance(error, str):
+            raise RuntimeError(f"Bokeh frontend snapshot render failed: {error}") from e
         raise RuntimeError(
             "Bokeh was not loaded in time. Something may have gone wrong.",
         ) from e
@@ -349,18 +363,9 @@ def _playwright_render(
                 page.close()
         return (result, w, h, dpr)
 
-    if _in_async_context() and not user_driver:
+    if not user_driver:
         return _playwright_thread.run(_do_export)
     return _do_export()
-
-
-def _in_async_context() -> bool:
-    '''Return True if there is a running asyncio event loop (e.g. Jupyter).'''
-    try:
-        asyncio.get_running_loop()
-        return True
-    except RuntimeError:
-        return False
 
 
 class _PlaywrightThread:

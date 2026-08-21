@@ -2,6 +2,7 @@ import type {ClientSession} from "../client/session"
 import {parse_token, pull_session} from "../client/connection"
 import {logger} from "../core/logging"
 import type {ViewManager} from "../core/view_manager"
+import type {Document} from "../document"
 
 import {add_document_standalone} from "./standalone"
 import type {EmbedTarget} from "./dom"
@@ -53,6 +54,40 @@ type WebSocketURL = string
 type SessionID = string
 
 const _sessions: Map<WebSocketURL, Map<SessionID, Promise<ClientSession>>> = new Map()
+const _document_sessions = new WeakMap<Document, {session: ClientSession, websocket_url: WebSocketURL, session_id: SessionID}>()
+const _cancelled_elements = new Map<string, ReturnType<typeof setTimeout>>()
+const _cancelled_element_timeout = 30_000
+
+function _close_session(session: ClientSession, websocket_url: WebSocketURL, session_id: SessionID): void {
+  session.close()
+  const sessions = _sessions.get(websocket_url)
+  sessions?.delete(session_id)
+  if (sessions?.size == 0) {
+    _sessions.delete(websocket_url)
+  }
+}
+
+export function cancel_session_for_element(element_id: string): void {
+  const previous = _cancelled_elements.get(element_id)
+  if (previous != null) {
+    clearTimeout(previous)
+  }
+  const timeout = setTimeout(() => _cancelled_elements.delete(element_id), _cancelled_element_timeout)
+  _cancelled_elements.set(element_id, timeout)
+}
+
+function _take_cancelled_element(element_id: string | undefined): boolean {
+  if (element_id == null) {
+    return false
+  }
+  const timeout = _cancelled_elements.get(element_id)
+  if (timeout == null) {
+    return false
+  }
+  clearTimeout(timeout)
+  _cancelled_elements.delete(element_id)
+  return true
+}
 
 function _get_session(websocket_url: string, token: string, args_string: string): Promise<ClientSession> {
   const session_id = parse_token(token).session_id
@@ -70,15 +105,46 @@ function _get_session(websocket_url: string, token: string, args_string: string)
 
 // Fill element with the roots from token
 export async function add_document_from_session(websocket_url: string, token: string, element: EmbedTarget,
-    roots: EmbedTarget[] = [], use_for_title: boolean = false): Promise<ViewManager> {
+    roots: EmbedTarget[] = [], use_for_title: boolean = false, element_id?: string): Promise<ViewManager> {
+  const session_id = parse_token(token).session_id
   const args_string = window.location.search.substring(1)
   let session: ClientSession
   try {
     session = await _get_session(websocket_url, token, args_string)
   } catch (error) {
-    const session_id = parse_token(token).session_id
+    const sessions = _sessions.get(websocket_url)
+    sessions?.delete(session_id)
+    if (sessions?.size == 0) {
+      _sessions.delete(websocket_url)
+    }
     logger.error(`Failed to load Bokeh session ${session_id}: ${error}`)
     throw error
   }
-  return add_document_standalone(session.document, element, roots, use_for_title)
+  if (_take_cancelled_element(element_id)) {
+    _close_session(session, websocket_url, session_id)
+    throw new DOMException("Session rendering was cancelled", "AbortError")
+  }
+  try {
+    const manager = await add_document_standalone(session.document, element, roots, use_for_title)
+    if (_take_cancelled_element(element_id)) {
+      manager.clear()
+      throw new DOMException("Session rendering was cancelled", "AbortError")
+    }
+    _document_sessions.set(session.document, {session, websocket_url, session_id})
+    return manager
+  } catch (error) {
+    _close_session(session, websocket_url, session_id)
+    logger.error(`Failed to render Bokeh session ${session_id}: ${error}`)
+    throw error
+  }
+}
+
+export function close_session_for_document(document: Document): boolean {
+  const entry = _document_sessions.get(document)
+  if (entry == null) {
+    return false
+  }
+  _document_sessions.delete(document)
+  _close_session(entry.session, entry.websocket_url, entry.session_id)
+  return true
 }

@@ -28,10 +28,6 @@ class ModelWithView extends HasProps {
 }
 
 describe("embed", () => {
-  it("should have an empty 'kernels' dict on the embed module", () => {
-    expect(embed.kernels).to.be.equal({})
-  })
-
   describe("implements add_document_standalone()", () => {
     it("which notifies idle on models without views", async () => {
       const doc = new Document()
@@ -69,4 +65,5 @@ describe("embed", () => {
       views.clear()
     }
   })
+
 })

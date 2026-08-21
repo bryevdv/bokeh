@@ -8,11 +8,13 @@
 
 from __future__ import annotations
 
+# Standard library imports
 import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
+# Bokeh imports
 from ..document import Document
 from ..model import Model
 from ..resources import DEFAULT_SERVER_HTTP_URL
@@ -23,6 +25,7 @@ from .util import OutputDocumentFor, ThemeSource, submodel_has_python_callbacks
 log = logging.getLogger(__name__)
 
 type CallbackPolicy = Literal["warn", "error", "suppress"]
+type SerializationPolicy = Literal["static", "protocol"]
 type EmbedInput = Model | Document | Sequence[Model | Document] | Mapping[str, Model | Document]
 type ServerRoot = Model | str
 
@@ -40,6 +43,7 @@ class EmbedSpec:
     callback_policy: CallbackPolicy = "warn"
     metadata: Mapping[str, Any] | None = None
     always_new: bool = False
+    serialization: SerializationPolicy = "static"
 
 
 def embed(models: EmbedInput, *, theme: ThemeSource = None, callback_policy: CallbackPolicy = "warn",
@@ -47,6 +51,22 @@ def embed(models: EmbedInput, *, theme: ThemeSource = None, callback_policy: Cal
     """Compile standalone Bokeh content into a portable embedding artifact."""
     spec = _standalone_spec(
         models, theme=theme, callback_policy=callback_policy, metadata=metadata, always_new=_always_new,
+    )
+    return compile_embed(spec)
+
+
+def embed_protocol(models: EmbedInput, *, theme: ThemeSource = None,
+        callback_policy: CallbackPolicy = "warn", metadata: Mapping[str, Any] | None = None,
+        _always_new: bool = False) -> EmbedArtifact:
+    """Compile an ID-full artifact for a live protocol boundary.
+
+    Static embedding should use :func:`embed`. Notebook comms and other live
+    transports need canonical model IDs so subsequent patches can address the
+    initial graph without maintaining a second serialization contract.
+    """
+    spec = _standalone_spec(
+        models, theme=theme, callback_policy=callback_policy, metadata=metadata,
+        always_new=_always_new, serialization="protocol",
     )
     return compile_embed(spec)
 
@@ -70,14 +90,15 @@ def compile_embed(spec: EmbedSpec) -> EmbedArtifact:
             roots = tuple(ArtifactRoot(key, document=0, root=positions[model]) for key, model in zip(spec.keys, spec.models))
         except KeyError as error:
             raise EmbedCompileError("an embedding root is not a root of the compiler document") from error
-        document_json = document.to_static_json(deferred=False)
+        document_json = document.to_static_json(deferred=False) if spec.serialization == "static" else document.to_json(deferred=False)
         requirements = requirements_for_objs([document])
 
     artifact_metadata = dict(spec.metadata or {})
     artifact_metadata["compiler"] = {
         "callback_policy": spec.callback_policy,
         "input_shape": spec.input_shape,
-        "static_model_ids": "graph-minimal",
+        "static_model_ids": "graph-minimal" if spec.serialization == "static" else "protocol-full",
+        "model_ids": "graph-minimal" if spec.serialization == "static" else "protocol-full",
     }
     return EmbedArtifact(
         source={"kind": "standalone", "documents": [document_json]},
@@ -144,7 +165,8 @@ def embed_server(url: str = "default", *, session_id: str | None = None,
 
 
 def _standalone_spec(models: EmbedInput, *, theme: ThemeSource, callback_policy: CallbackPolicy,
-        metadata: Mapping[str, Any] | None, always_new: bool) -> EmbedSpec:
+        metadata: Mapping[str, Any] | None, always_new: bool,
+        serialization: SerializationPolicy = "static") -> EmbedSpec:
     roots: list[Model] = []
     keys: list[str] = []
 
@@ -192,14 +214,19 @@ def _standalone_spec(models: EmbedInput, *, theme: ThemeSource, callback_policy:
         raise EmbedCompileError("the same Bokeh model cannot be assigned to more than one logical artifact root")
     if len(set(keys)) != len(keys):
         raise EmbedCompileError("logical artifact root keys must be unique")
-    return EmbedSpec(tuple(roots), tuple(keys), input_shape, theme, callback_policy, metadata, always_new)
+    return EmbedSpec(
+        tuple(roots), tuple(keys), input_shape, theme, callback_policy, metadata,
+        always_new, serialization,
+    )
 
 
 __all__ = (
     "CallbackPolicy",
     "EmbedCompileError",
     "EmbedSpec",
+    "SerializationPolicy",
     "compile_embed",
     "embed",
+    "embed_protocol",
     "embed_server",
 )
