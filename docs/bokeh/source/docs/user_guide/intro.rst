@@ -99,16 +99,18 @@ Output methods
 --------------
 
 Bokeh offers a variety of ways to produce interactive output. The following
-two functions are the most common:
+three functions are the most common:
 
 |output_file|
     Generate simple standalone HTML documents for Bokeh visualizations.
 
-|output_notebook|
-    Display Bokeh visualizations in Jupyter/Zeppelin notebooks.
+|show|
+    Display Bokeh visualizations, including automatic inline Jupyter output.
 
-These output functions are usually used together with |show| or |save|. Here's
-an example:
+|save|
+    Save Bokeh visualizations without opening them.
+
+For file output, call |output_file| before |show| or |save|. Here's an example:
 
 .. code-block:: python
 
