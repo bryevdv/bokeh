@@ -41,6 +41,7 @@ import json
 import os
 import re
 from dataclasses import dataclass, field
+from functools import lru_cache
 from os.path import relpath
 from pathlib import Path
 from typing import (
@@ -96,6 +97,17 @@ LogLevelEnum = enumeration(LogLevel)
 class ComponentDefs(TypedDict):
     js: list[Component]
     css: list[Component]
+
+@lru_cache(maxsize=32)
+def _cached_inline(path: str, mtime_ns: int, size: int) -> str:
+    del mtime_ns, size
+    file_path = Path(path)
+    filename = file_path.name
+    begin = f"/* BEGIN {filename} */"
+    with open(file_path, "rb") as f:
+        middle = f.read().decode("utf-8")
+    end = f"/* END {filename} */"
+    return f"{begin}\n{middle}\n{end}"
 
 # __all__ defined at the bottom on the class module
 
@@ -491,12 +503,8 @@ class Resources:
 
     @staticmethod
     def _inline(path: Path) -> str:
-        filename = path.name
-        begin = f"/* BEGIN {filename} */"
-        with open(path, "rb") as f:
-            middle = f.read().decode("utf-8")
-        end = f"/* END {filename} */"
-        return f"{begin}\n{middle}\n{end}"
+        stat = path.stat()
+        return _cached_inline(str(path), stat.st_mtime_ns, stat.st_size)
 
     @property
     def js_files(self) -> list[str]:

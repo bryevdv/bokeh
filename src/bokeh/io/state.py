@@ -46,16 +46,14 @@ log = logging.getLogger(__name__)
 # Standard library imports
 import os
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 # Bokeh imports
 from ..resources import Resources, ResourcesMode
 
 if TYPE_CHECKING:
-    from ..core.types import ID, PathLike
+    from ..core.types import PathLike
     from ..document import Document
-    from ..server.server import Server
-    from .notebook import CommsHandle, NotebookType
 
 #-----------------------------------------------------------------------------
 # Globals and constants
@@ -77,14 +75,7 @@ class State:
 
     _file: FileConfig | None
 
-    _notebook: bool
-    _notebook_type: NotebookType | None
-    last_comms_handle: CommsHandle | None
-    uuid_to_server: dict[ID, Server]
-
     def __init__(self) -> None:
-        self.last_comms_handle = None
-        self.uuid_to_server = {} # Mapping from uuid to server instance
         self.reset()
 
     # Properties --------------------------------------------------------------
@@ -109,40 +100,15 @@ class State:
         '''
         return self._file
 
-    @property
-    def notebook(self) -> bool:
-        ''' Whether to generate notebook output on show operations. (READ ONLY)
-
-        '''
-        return self._notebook
-
-    @property
-    def notebook_type(self) -> NotebookType | None:
-        ''' Notebook type
-
-        '''
-        return self._notebook_type
-
-    @notebook_type.setter
-    def notebook_type(self, notebook_type: NotebookType) -> None:
-        ''' Notebook type, acceptable values are 'jupyter' as well as any names
-        defined by external notebook hooks that have been installed.
-
-        '''
-        if notebook_type is None or not isinstance(notebook_type, str):
-            raise ValueError("Notebook type must be a string")
-        self._notebook_type = cast("NotebookType", notebook_type.lower())
-
     # Public methods ----------------------------------------------------------
 
     def output_file(self, filename: PathLike, title: str = "Bokeh Plot",
             mode: ResourcesMode | None = None, root_dir: PathLike | None = None) -> None:
         ''' Configure output to a standalone HTML file.
 
-        Calling ``output_file`` does not clear the effects of any other calls to
-        |output_notebook|, etc. It adds an additional output destination
-        (publishing to HTML files). Any other active output modes continue
-        to be active.
+        In an interactive notebook kernel, ``show()`` displays inline and does
+        not consume this file configuration. Call ``save()`` explicitly to
+        create an external HTML file.
 
         Args:
             filename (PathLike, e.g. str, Path) : a filename for saving the HTML document
@@ -161,8 +127,8 @@ class State:
                 This value is ignored for other resource types, e.g. ``INLINE`` or ``CDN``.
 
         .. warning::
-            The specified output file will be overwritten on every save, e.g.,
-            every time ``show()`` or ``save()`` is called.
+            The specified output file will be overwritten by each explicit
+            ``save()``, or by ``show()`` outside an interactive notebook.
 
         '''
         self._file = FileConfig(
@@ -174,27 +140,13 @@ class State:
         if os.path.isfile(filename):
             log.info(f"Session output file '{filename}' already exists, will be overwritten.")
 
-    def output_notebook(self, notebook_type: NotebookType = "jupyter") -> None:
-        ''' Generate output in notebook cells.
-
-        Calling ``output_notebook`` does not clear the effects of any other
-        calls to |output_file|, etc. It adds an additional output destination
-        (publishing to notebook output cells). Any other active output modes
-        continue to be active.
-
-        Returns:
-            None
-
-        '''
-        self._notebook = True
-        self.notebook_type = notebook_type
-
     def reset(self) -> None:
         ''' Deactivate all currently active output modes and set ``curdoc()``
         to a fresh empty ``Document``.
 
-        Subsequent calls to ``show()`` will not render until a new output mode
-        is activated.
+        Subsequent calls to ``show()`` render inline automatically in an
+        interactive notebook; outside a notebook, configure another output
+        mode first.
 
         Returns:
             None
@@ -211,8 +163,6 @@ class State:
 
         '''
         self._file = None
-        self._notebook = False
-        self._notebook_type = None
 
     def _reset_with_doc(self, doc: Document) -> None:
         ''' Reset output modes but DO replace the default Document
