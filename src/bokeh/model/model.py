@@ -49,7 +49,7 @@ from ..core.serialization import (
 from ..events import Event
 from ..themes import default as default_theme
 from ..util.callback_manager import EventCallbackManager, PropertyCallbackManager
-from ..util.serialization import make_id, _reserve_id
+from ..util.serialization import _reserve_id, make_id
 from .docs import html_repr, process_example
 from .util import (
     HasDocumentRef,

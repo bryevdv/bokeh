@@ -20,10 +20,7 @@ import pytest ; pytest
 from unittest.mock import patch
 
 # Bokeh imports
-from bokeh.core.properties import (
-    Instance,
-    Int,
-)
+from bokeh.core.properties import Instance, Int
 from bokeh.document.document import Document
 from bokeh.io import curdoc
 from bokeh.model import Model

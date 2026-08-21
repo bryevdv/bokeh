@@ -23,10 +23,7 @@ log = logging.getLogger(__name__)
 # Standard library imports
 import re
 from contextlib import contextmanager
-from typing import (
-    Generator,
-    Sequence,
-)
+from typing import Generator, Sequence
 from weakref import WeakKeyDictionary
 
 # Bokeh imports

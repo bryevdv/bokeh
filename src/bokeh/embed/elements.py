@@ -8,8 +8,10 @@
 
 from __future__ import annotations
 
+# Standard library imports
 from typing import Any, NoReturn
 
+# Bokeh imports
 from .standalone import EmbedMigrationError
 
 __all__ = (

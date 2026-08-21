@@ -6,11 +6,12 @@
 #-----------------------------------------------------------------------------
 from __future__ import annotations
 
+# External imports
 import pytest
 
-from bokeh.embed import EmbedMigrationError
-
+# Bokeh imports
 import bokeh.embed.elements as bee
+from bokeh.embed import EmbedMigrationError
 
 
 @pytest.mark.parametrize("name", [

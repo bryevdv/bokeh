@@ -20,7 +20,6 @@ from urllib.request import urlopen
 # External imports
 import pytest
 
-
 pytestmark = pytest.mark.skipif(
     shutil.which("marimo") is None or importlib.util.find_spec("anywidget") is None,
     reason="marimo and AnyWidget 0.11 or later are required",
