@@ -33,6 +33,7 @@ from typing import (
 from ..models.dom import DOMNode
 from ..models.ui import UIElement
 from ..util.browser import get_browser_controller
+from ._output_capture import record_output
 from .notebook import show_doc
 from .saving import save
 from .state import curstate
@@ -103,6 +104,9 @@ def show(
         for file or browser output outside a notebook.
 
     '''
+    if record_output("show", obj, resources=resources, **kwargs):
+        return None
+
     from ..models.dom import DOMNode
     from ..models.ui import UIElement
 
