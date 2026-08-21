@@ -8,16 +8,20 @@
 
 from __future__ import annotations
 
+# Standard library imports
 import json
 from collections.abc import Awaitable
 from typing import Any, cast
 from urllib.parse import urlparse
 
+# External imports
 from tornado.web import HTTPError
 
+# Bokeh imports
 from bokeh import __version__
 from bokeh.settings import settings
 
+# Bokeh imports
 from ..session import ServerSession
 from ..util import check_allowlist
 from .session_handler import SessionHandler

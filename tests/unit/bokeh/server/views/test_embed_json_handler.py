@@ -7,12 +7,15 @@
 
 from __future__ import annotations
 
+# Standard library imports
 import json
 from typing import Any
 
+# External imports
 import pytest
 from tornado.web import HTTPError
 
+# Bokeh imports
 from bokeh import __version__
 from bokeh.server.urls import per_app_patterns
 from bokeh.server.views.embed_json_handler import EmbedJsonHandler
