@@ -24,6 +24,23 @@ Incremental builds track external example files, and a generated-asset
 manifest removes stale page payloads. Parallel readers merge page records
 without sharing mutable module state.
 
+The generated targets use the same target-local ``BokehMount`` lifecycle as
+other artifact declarations. An external script may run before or after the
+page bootstrap and acquire the handle from a logical-root target::
+
+    const target = document.querySelector(
+      "#my-plot-section [data-bokeh-root='root']",
+    )
+    const mounted = await Bokeh.when_mounted(target)
+    await mounted.ready
+
+Scope the selector to a stable section or application container when a page has
+more than one plot. A multi-root artifact uses ``root-0``, ``root-1``, and so
+on; every one of its targets publishes the same handle. Disposal and remounting
+update those targets through the common lifecycle. Payload, schema, resource,
+and other pre-handle failures make ``when_mounted()`` reject with a structured
+``BokehMountError`` instead of leaving a consumer waiting indefinitely.
+
 The directive options are:
 
 ``source-position``
@@ -58,7 +75,10 @@ policy fields such as ``nonce``, ``integrity``, ``crossorigin``, and
 creating a network-dependent build. ``inline`` and ``offline`` use packaged
 BokehJS assets (or a task-local development build). ``static`` keeps page
 payloads and the shared bootstrap external, which works with an external-only
-content security policy.
+content security policy. With ``none``, the host must load a compatible BokehJS
+artifact runtime and satisfy the exact bundle and custom-extension requirements
+of every page before the Sphinx bootstrap runs; the extension does not fall
+back to a second resource loader.
 
 Static artifacts cannot run Python callbacks. By default, the directive treats
 them as an error with source location and recommends ``CustomJS`` or a Bokeh
@@ -78,4 +98,6 @@ under ``_static/bokeh-plot``. Examples may keep ``output_file()`` and
 execution these calls are captured as inert output configuration and do not
 change global state. Custom wrappers should consume :func:`bokeh.embed.embed`
 and its typed renderers rather than reconstructing autoload or ``RenderItem``
-markup.
+markup. Code that inspected a generated bootstrap's private mount collection or
+waited for its load order should select the intended ``data-bokeh-root`` target
+and call ``Bokeh.when_mounted()`` instead.
