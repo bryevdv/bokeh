@@ -8,6 +8,6 @@
 {{ filename }}
 {{ '-' * filename|length }}
 
-.. bokeh-plot:: {{ source_path }}
+.. bokeh-embed:: {{ source_path }}
     :process-docstring:
     :source-position: below

@@ -77,7 +77,7 @@ class ButtonLike(HasProps):
     A style for the button, signifying it's role. Possible values are one of the
     following:
 
-    .. bokeh-plot::
+    .. bokeh-embed::
         :source-position: none
 
         from bokeh.core.enums import ButtonType

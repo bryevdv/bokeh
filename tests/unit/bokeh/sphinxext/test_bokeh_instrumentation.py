@@ -15,7 +15,10 @@ from bokeh.sphinxext._internal.timing import (
     _setup_docs_profile,
     _start_docs_write,
 )
-from bokeh.sphinxext.bokeh_plot import _PlotTiming, env_merge_info as merge_plot_timings
+from bokeh.sphinxext.bokeh_embed import (
+    _EmbedTiming,
+    env_merge_info as merge_embed_timings,
+)
 
 
 def test_setup_docs_profile_registers_phase_hooks() -> None:
@@ -62,8 +65,8 @@ def test_start_docs_write_times_main_process_operations() -> None:
     assert app._bokeh_docs_profile.serialize_timings[0].docname == "document"
 
 
-def test_merge_plot_timings_only_includes_worker_docnames() -> None:
-    included = _PlotTiming(
+def test_merge_embed_timings_only_includes_worker_docnames() -> None:
+    included = _EmbedTiming(
         total=1.0,
         evaluate=0.4,
         serialize=0.5,
@@ -71,7 +74,7 @@ def test_merge_plot_timings_only_includes_worker_docnames() -> None:
         docname="included",
         source="included.py",
     )
-    inherited = _PlotTiming(
+    inherited = _EmbedTiming(
         total=2.0,
         evaluate=0.8,
         serialize=1.0,
@@ -79,16 +82,16 @@ def test_merge_plot_timings_only_includes_worker_docnames() -> None:
         docname="inherited",
         source="inherited.py",
     )
-    env = SimpleNamespace(bokeh_plot_pages={}, bokeh_plot_timings=[])
+    env = SimpleNamespace(bokeh_embed_pages={}, bokeh_embed_timings=[])
     other = SimpleNamespace(
-        bokeh_plot_pages={"inherited": ["ignored"], "included": ["record"]},
-        bokeh_plot_timings=[inherited, included],
+        bokeh_embed_pages={"inherited": ["ignored"], "included": ["record"]},
+        bokeh_embed_timings=[inherited, included],
     )
 
-    merge_plot_timings(None, cast(Any, env), ["included"], cast(Any, other))
+    merge_embed_timings(None, cast(Any, env), ["included"], cast(Any, other))
 
-    assert env.bokeh_plot_pages == {"included": ["record"]}
-    assert env.bokeh_plot_timings == [included]
+    assert env.bokeh_embed_pages == {"included": ["record"]}
+    assert env.bokeh_embed_timings == [included]
 
 
 def test_merge_model_timings_only_includes_worker_docnames() -> None:
@@ -118,7 +121,7 @@ def test_merge_model_timings_only_includes_worker_docnames() -> None:
 
 def test_timing_records_are_pickle_safe() -> None:
     timings = [
-        _PlotTiming(
+        _EmbedTiming(
             total=1.0,
             evaluate=0.4,
             serialize=0.5,

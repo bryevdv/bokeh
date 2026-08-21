@@ -40,7 +40,7 @@ function to create circles.
    :language: python
    :emphasize-lines: 15
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_2_add_circles.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_2_add_circles.py
     :source-position: none
 
 Rendering bars
@@ -60,7 +60,7 @@ visualization.
    :language: python
    :emphasize-lines: 14
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_2_add_bars.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_2_add_bars.py
     :source-position: none
 
 .. seealso::
@@ -113,7 +113,7 @@ slightly transparent with a red fill color and blue outlines:
    :language: python
    :emphasize-lines: 11-19
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_2_style_circle.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_2_style_circle.py
     :source-position: none
 
 .. _first_steps_2_altering_existing:
@@ -159,7 +159,7 @@ outputting the plot:
    :language: python
    :emphasize-lines: 22-23
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_2_style_existing_circle.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_2_style_existing_circle.py
     :source-position: none
 
 .. seealso::

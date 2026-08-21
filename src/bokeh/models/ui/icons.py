@@ -82,7 +82,7 @@ class BuiltinIcon(Icon):
     The name of a built-in icon to use. Currently, the following icon names are
     supported: ``"help"``, ``"question-mark"``, ``"settings"``, ``"x"``
 
-    .. bokeh-plot::
+    .. bokeh-embed::
         :source-position: none
 
         from bokeh.io import show

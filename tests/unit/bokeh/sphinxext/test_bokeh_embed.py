@@ -17,8 +17,8 @@ def _project(tmp_path: Path, *, config: str = "") -> tuple[Path, Path, Path]:
     doctrees = tmp_path / "doctrees"
     source.mkdir(parents=True)
     (source / "conf.py").write_text(
-        "extensions = ['bokeh.sphinxext.bokeh_plot']\n"
-        "project = 'bokeh-plot-test'\n"
+        "extensions = ['bokeh.sphinxext.bokeh_embed']\n"
+        "project = 'bokeh-embed-test'\n"
         f"{config}\n",
         encoding="utf-8",
     )
@@ -46,27 +46,27 @@ def _build(source: Path, output: Path, doctrees: Path, *, builder: str = "html",
 
 
 def _payloads(output: Path) -> list[Path]:
-    return sorted((output / "_static" / "bokeh-plot").glob("bokeh-plot-*.json"))
+    return sorted((output / "_static" / "bokeh-embed").glob("bokeh-embed-*.json"))
 
 
 def test_html_build_aggregates_artifacts_and_exact_resources_once(tmp_path: Path) -> None:
     source, output, doctrees = _project(tmp_path)
     (source / "index.rst").write_text(
-        "Plots\n=====\n\n"
+        "Embeds\n=======\n\n"
         ".. toctree::\n\n"
         "   plain\n\n"
-        ".. bokeh-plot::\n"
+        ".. bokeh-embed::\n"
         "   :source-position: none\n\n"
         "   from bokeh.plotting import figure, show\n"
         "   show(figure(width=200, height=100))\n\n"
-        ".. bokeh-plot::\n"
+        ".. bokeh-embed::\n"
         "   :source-position: none\n\n"
         "   from bokeh.io import show\n"
         "   from bokeh.models import Button\n"
         "   show(Button(label='click'))\n",
         encoding="utf-8",
     )
-    (source / "plain.rst").write_text("Plain\n=====\n\nNo plots here.\n", encoding="utf-8")
+    (source / "plain.rst").write_text("Plain\n=====\n\nNo embeds here.\n", encoding="utf-8")
 
     _build(source, output, doctrees)
 
@@ -88,13 +88,13 @@ def test_html_build_aggregates_artifacts_and_exact_resources_once(tmp_path: Path
     payload = json.loads(payload_path.read_text(encoding="utf-8"))
     assert payload["schema"] == "bokeh.embed-page/v1"
     assert len(payload["artifacts"]) == 2
-    assert (output / "_static" / "bokeh-plot" / "bokeh-sphinx-bootstrap.js").is_file()
+    assert (output / "_static" / "bokeh-embed" / "bokeh-sphinx-bootstrap.js").is_file()
 
 
 def test_html_build_delegates_target_lifecycle_to_the_shared_artifact_runtime(tmp_path: Path) -> None:
     source, output, doctrees = _project(tmp_path)
     (source / "index.rst").write_text(
-        "Lifecycle\n=========\n\n.. bokeh-plot::\n   :source-position: none\n\n"
+        "Lifecycle\n=========\n\n.. bokeh-embed::\n   :source-position: none\n\n"
         "   from bokeh.plotting import figure, show\n   show([figure(), figure()])\n",
         encoding="utf-8",
     )
@@ -102,7 +102,7 @@ def test_html_build_delegates_target_lifecycle_to_the_shared_artifact_runtime(tm
     _build(source, output, doctrees)
     html = (output / "index.html").read_text(encoding="utf-8")
     bootstrap = (
-        output / "_static" / "bokeh-plot" / "bokeh-sphinx-bootstrap.js"
+        output / "_static" / "bokeh-embed" / "bokeh-sphinx-bootstrap.js"
     ).read_text(encoding="utf-8")
 
     assert html.count('data-bokeh-root="root-0"') == 1
@@ -122,7 +122,7 @@ def test_multiple_show_calls_and_multiple_roots_use_logical_keys(tmp_path: Path)
     source, output, doctrees = _project(tmp_path)
     (source / "index.rst").write_text(
         "Multiple\n========\n\n"
-        ".. bokeh-plot::\n"
+        ".. bokeh-embed::\n"
         "   :source-position: none\n\n"
         "   from bokeh.io import show\n"
         "   from bokeh.plotting import figure\n"
@@ -150,7 +150,7 @@ def test_non_html_builder_emits_accessible_fallback_without_assets(tmp_path: Pat
     source, output, doctrees = _project(tmp_path)
     (source / "index.rst").write_text(
         "Fallback\n========\n\n"
-        ".. bokeh-plot::\n"
+        ".. bokeh-embed::\n"
         "   :alt: Sales trend visualization\n"
         "   :source-position: none\n\n"
         "   from bokeh.plotting import figure, show\n"
@@ -161,13 +161,13 @@ def test_non_html_builder_emits_accessible_fallback_without_assets(tmp_path: Pat
     _build(source, output, doctrees, builder="text")
     text = (output / "index.txt").read_text(encoding="utf-8")
     assert "Sales trend visualization" in text
-    assert not (output / "_static" / "bokeh-plot").exists()
+    assert not (output / "_static" / "bokeh-embed").exists()
 
 
 def test_quick_build_skips_execution_and_emits_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     source, output, doctrees = _project(tmp_path)
     (source / "index.rst").write_text(
-        "Quick\n=====\n\n.. bokeh-plot::\n   :source-position: none\n\n"
+        "Quick\n=====\n\n.. bokeh-embed::\n   :source-position: none\n\n"
         "   raise RuntimeError('must not execute')\n",
         encoding="utf-8",
     )
@@ -175,8 +175,39 @@ def test_quick_build_skips_execution_and_emits_fallback(tmp_path: Path, monkeypa
 
     _build(source, output, doctrees)
     html = (output / "index.html").read_text(encoding="utf-8")
-    assert "Interactive Bokeh plot omitted" in html
+    assert "Interactive Bokeh content omitted" in html
     assert "data-bokeh-page-payload-url" not in html
+
+
+def test_renamed_directive_reports_an_actionable_migration(tmp_path: Path) -> None:
+    source, output, doctrees = _project(tmp_path)
+    (source / "index.rst").write_text(
+        "Legacy\n======\n\n.. bokeh-plot::\n\n   from bokeh.models import Button\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(Exception, match=r"bokeh-plot was renamed to bokeh-embed in Bokeh 4.0"):
+        _build(source, output, doctrees)
+
+
+def test_renamed_extension_reports_an_actionable_migration(tmp_path: Path) -> None:
+    source, output, doctrees = _project(tmp_path)
+    (source / "conf.py").write_text(
+        "extensions = ['bokeh.sphinxext.bokeh_plot']\nproject = 'legacy-extension'\n",
+        encoding="utf-8",
+    )
+    (source / "index.rst").write_text("Legacy\n======\n", encoding="utf-8")
+
+    with pytest.raises(Exception, match=r"bokeh.sphinxext.bokeh_plot was renamed"):
+        _build(source, output, doctrees)
+
+
+def test_renamed_config_reports_an_actionable_migration(tmp_path: Path) -> None:
+    source, output, doctrees = _project(tmp_path, config="bokeh_plot_resources = 'cdn'")
+    (source / "index.rst").write_text("Legacy\n======\n", encoding="utf-8")
+
+    with pytest.raises(Exception, match="bokeh_plot_resources was renamed to bokeh_embed_resources"):
+        _build(source, output, doctrees)
 
 
 def test_incremental_external_dependency_is_deterministic_and_cleans_stale_payload(tmp_path: Path) -> None:
@@ -186,7 +217,7 @@ def test_incremental_external_dependency_is_deterministic_and_cleans_stale_paylo
         "from bokeh.plotting import figure, show\nshow(figure(width=100))\n", encoding="utf-8",
     )
     (source / "index.rst").write_text(
-        "External\n========\n\n.. bokeh-plot:: plot.py\n   :source-position: none\n",
+        "External\n========\n\n.. bokeh-embed:: plot.py\n   :source-position: none\n",
         encoding="utf-8",
     )
 
@@ -217,7 +248,7 @@ def test_parallel_builds_produce_one_payload_per_page(tmp_path: Path) -> None:
     for name in ("first", "second"):
         (source / f"{name}.rst").write_text(
             f"{name.title()}\n{'=' * len(name)}\n\n"
-            ".. bokeh-plot::\n"
+            ".. bokeh-embed::\n"
             "   :source-position: none\n\n"
             "   from bokeh.plotting import figure, show\n"
             f"   show(figure(title='{name}'))\n",
@@ -238,14 +269,14 @@ def test_nested_pages_use_relative_asset_urls_without_html_suffixes(tmp_path: Pa
         "Nested\n======\n\n.. toctree::\n\n   nested/page\n", encoding="utf-8",
     )
     (source / "nested" / "page.rst").write_text(
-        "Page\n====\n\n.. bokeh-plot::\n   :source-position: none\n\n"
+        "Page\n====\n\n.. bokeh-embed::\n   :source-position: none\n\n"
         "   from bokeh.plotting import figure, show\n   show(figure())\n",
         encoding="utf-8",
     )
 
     _build(source, output, doctrees)
     html = (output / "nested" / "page.html").read_text(encoding="utf-8")
-    assert 'src="../_static/bokeh-plot/bokeh-sphinx-bootstrap.js"' in html
+    assert 'src="../_static/bokeh-embed/bokeh-sphinx-bootstrap.js"' in html
     assert "bokeh-sphinx-bootstrap.js.html" not in html
     assert ".json.html" not in html
 
@@ -263,7 +294,7 @@ def test_nested_pages_use_relative_asset_urls_without_html_suffixes(tmp_path: Pa
 def test_failures_are_source_located_and_actionable(tmp_path: Path, source_code: str, message: str) -> None:
     source, output, doctrees = _project(tmp_path)
     (source / "index.rst").write_text(
-        "Failure\n=======\n\n.. bokeh-plot::\n   :source-position: none\n\n" +
+        "Failure\n=======\n\n.. bokeh-embed::\n   :source-position: none\n\n" +
         "\n".join(f"   {line}" for line in source_code.splitlines()) + "\n",
         encoding="utf-8",
     )
@@ -276,12 +307,12 @@ def test_csp_and_host_owned_policies_are_explicit(tmp_path: Path) -> None:
     source, output, doctrees = _project(
         tmp_path,
         config=(
-            "bokeh_plot_resources = 'cdn'\n"
-            "bokeh_plot_resource_options = {'nonce': 'docs-nonce'}\n"
+            "bokeh_embed_resources = 'cdn'\n"
+            "bokeh_embed_resource_options = {'nonce': 'docs-nonce'}\n"
         ),
     )
     (source / "index.rst").write_text(
-        "CSP\n===\n\n.. bokeh-plot::\n   :source-position: none\n\n"
+        "CSP\n===\n\n.. bokeh-embed::\n   :source-position: none\n\n"
         "   from bokeh.plotting import figure, show\n   show(figure())\n",
         encoding="utf-8",
     )
@@ -289,9 +320,9 @@ def test_csp_and_host_owned_policies_are_explicit(tmp_path: Path) -> None:
     html = (output / "index.html").read_text(encoding="utf-8")
     assert html.count('nonce="docs-nonce"') == 3  # core, API, and page bootstrap
 
-    host_source, host_output, host_doctrees = _project(tmp_path / "host", config="bokeh_plot_resources = 'none'")
+    host_source, host_output, host_doctrees = _project(tmp_path / "host", config="bokeh_embed_resources = 'none'")
     (host_source / "index.rst").write_text(
-        "Host\n====\n\n.. bokeh-plot::\n   :source-position: none\n\n"
+        "Host\n====\n\n.. bokeh-embed::\n   :source-position: none\n\n"
         "   from bokeh.plotting import figure, show\n   show(figure())\n",
         encoding="utf-8",
     )
@@ -304,7 +335,7 @@ def test_csp_and_host_owned_policies_are_explicit(tmp_path: Path) -> None:
 def test_duplicate_custom_extension_assets_are_emitted_once(tmp_path: Path) -> None:
     source, output, doctrees = _project(tmp_path)
     directive = (
-        ".. bokeh-plot::\n"
+        ".. bokeh-embed::\n"
         "   :source-position: none\n\n"
         "   from bokeh.io import show\n"
         "   from bokeh.models import Div\n"
@@ -322,38 +353,38 @@ def test_duplicate_custom_extension_assets_are_emitted_once(tmp_path: Path) -> N
 
 
 def test_static_policy_copies_only_required_local_bundles(tmp_path: Path) -> None:
-    source, output, doctrees = _project(tmp_path, config="bokeh_plot_resources = 'static'")
+    source, output, doctrees = _project(tmp_path, config="bokeh_embed_resources = 'static'")
     (source / "index.rst").write_text(
-        "Static\n======\n\n.. bokeh-plot::\n   :source-position: none\n\n"
+        "Static\n======\n\n.. bokeh-embed::\n   :source-position: none\n\n"
         "   from bokeh.plotting import figure, show\n   show(figure())\n",
         encoding="utf-8",
     )
 
     _build(source, output, doctrees)
     html = (output / "index.html").read_text(encoding="utf-8")
-    vendor = output / "_static" / "bokeh-plot" / "vendor" / "js"
+    vendor = output / "_static" / "bokeh-embed" / "vendor" / "js"
     assert (vendor / "bokeh.min.js").is_file()
     assert (vendor / "bokeh-api.min.js").is_file()
     assert not (vendor / "bokeh-widgets.min.js").exists()
-    assert "_static/bokeh-plot/vendor/js/bokeh.min.js" in html
+    assert "_static/bokeh-embed/vendor/js/bokeh.min.js" in html
 
 
 def test_tracking_manifest_removes_stale_bootstrap_payloads_and_vendor_assets(tmp_path: Path) -> None:
-    source, output, doctrees = _project(tmp_path, config="bokeh_plot_resources = 'static'")
+    source, output, doctrees = _project(tmp_path, config="bokeh_embed_resources = 'static'")
     index = source / "index.rst"
     index.write_text(
-        "Tracked\n=======\n\n.. bokeh-plot::\n   :source-position: none\n\n"
+        "Tracked\n=======\n\n.. bokeh-embed::\n   :source-position: none\n\n"
         "   from bokeh.plotting import figure, show\n   show(figure())\n",
         encoding="utf-8",
     )
 
     _build(source, output, doctrees)
-    generated = output / "_static" / "bokeh-plot"
+    generated = output / "_static" / "bokeh-embed"
     assert (generated / "bokeh-sphinx-bootstrap.js").is_file()
     assert (generated / "vendor" / "js" / "bokeh.min.js").is_file()
     assert len(_payloads(output)) == 1
 
-    index.write_text("Tracked\n=======\n\nNo plot remains.\n", encoding="utf-8")
+    index.write_text("Tracked\n=======\n\nNo embed remains.\n", encoding="utf-8")
     _build(source, output, doctrees)
     assert not (generated / "bokeh-sphinx-bootstrap.js").exists()
     assert not (generated / "vendor" / "js" / "bokeh.min.js").exists()
@@ -362,10 +393,36 @@ def test_tracking_manifest_removes_stale_bootstrap_payloads_and_vendor_assets(tm
     assert manifest["files"] == []
 
 
+def test_build_removes_only_manifest_tracked_legacy_assets(tmp_path: Path) -> None:
+    source, output, doctrees = _project(tmp_path)
+    (source / "index.rst").write_text("Current\n=======\n", encoding="utf-8")
+
+    legacy = output / "_static" / "bokeh-plot"
+    payload = legacy / f"bokeh-plot-{'0' * 64}.json"
+    bootstrap = legacy / "bokeh-sphinx-bootstrap.js"
+    bundle = legacy / "vendor" / "js" / "bokeh.min.js"
+    unmanaged = legacy / "keep.txt"
+    bundle.parent.mkdir(parents=True)
+    for path in (payload, bootstrap, bundle, unmanaged):
+        path.write_text(path.name, encoding="utf-8")
+    (legacy / "manifest.json").write_text(json.dumps({
+        "schema": "bokeh.sphinx-assets/v1",
+        "files": [payload.name, bootstrap.name, "vendor/js/bokeh.min.js"],
+    }), encoding="utf-8")
+
+    _build(source, output, doctrees)
+
+    assert not payload.exists()
+    assert not bootstrap.exists()
+    assert not bundle.exists()
+    assert not (legacy / "manifest.json").exists()
+    assert unmanaged.read_text(encoding="utf-8") == "keep.txt"
+
+
 def test_offline_policy_rejects_external_extension_with_source_context(tmp_path: Path) -> None:
-    source, output, doctrees = _project(tmp_path, config="bokeh_plot_resources = 'offline'")
+    source, output, doctrees = _project(tmp_path, config="bokeh_embed_resources = 'offline'")
     (source / "index.rst").write_text(
-        "Offline\n=======\n\n.. bokeh-plot::\n   :source-position: none\n\n"
+        "Offline\n=======\n\n.. bokeh-embed::\n   :source-position: none\n\n"
         "   from bokeh.io import show\n"
         "   from bokeh.models import Div\n"
         "   class ExternalDiv(Div):\n"
@@ -379,9 +436,9 @@ def test_offline_policy_rejects_external_extension_with_source_context(tmp_path:
 
 
 def test_offline_policy_inlines_exact_bokeh_resources(tmp_path: Path) -> None:
-    source, output, doctrees = _project(tmp_path, config="bokeh_plot_resources = 'offline'")
+    source, output, doctrees = _project(tmp_path, config="bokeh_embed_resources = 'offline'")
     (source / "index.rst").write_text(
-        "Offline\n=======\n\n.. bokeh-plot::\n   :source-position: none\n\n"
+        "Offline\n=======\n\n.. bokeh-embed::\n   :source-position: none\n\n"
         "   from bokeh.plotting import figure, show\n   show(figure())\n",
         encoding="utf-8",
     )
@@ -400,7 +457,7 @@ def test_payload_names_are_stable_across_clean_build_directories(tmp_path: Path)
     for name in ("first", "second"):
         source, output, doctrees = _project(tmp_path / name)
         (source / "index.rst").write_text(
-            "Stable\n======\n\n.. bokeh-plot::\n   :source-position: none\n\n"
+            "Stable\n======\n\n.. bokeh-embed::\n   :source-position: none\n\n"
             "   from bokeh.plotting import figure, show\n   show(figure(title='stable'))\n",
             encoding="utf-8",
         )

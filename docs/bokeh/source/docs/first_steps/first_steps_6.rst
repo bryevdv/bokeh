@@ -16,7 +16,7 @@ columns.
 
 For example:
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_6_row_layout.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_6_row_layout.py
     :source-position: none
 
 To combine several plots into a horizontal row layout, you first need to import
@@ -52,7 +52,7 @@ of the browser window, assign ``scale_width`` to ``sizing_mode``:
    :language: python
    :emphasize-lines: 22
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_6_row_layout_responsive.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_6_row_layout_responsive.py
     :source-position: none
 
 .. seealso::

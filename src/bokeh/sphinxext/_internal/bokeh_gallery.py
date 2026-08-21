@@ -122,6 +122,8 @@ def config_inited_handler(app: Any, config: Any) -> None:
         raise SphinxError(f"could not find gallery file {gallery_file!r} for configured gallery dir {gallery_dir!r}")
 
     gallery_file_mtime = getmtime(gallery_file)
+    template_file_mtime = getmtime(GALLERY_DETAIL.filename) if GALLERY_DETAIL.filename is not None else 0
+    inputs_mtime = max(gallery_file_mtime, template_file_mtime)
 
     ensuredir(gallery_dir)
     ensuredir(examples_dir)
@@ -141,8 +143,8 @@ def config_inited_handler(app: Any, config: Any) -> None:
         if detail_file_path in extras:
             extras.remove(detail_file_path)
 
-        # if the gallery detail file is newer than the gallery file, assume it is up-to-date
-        if exists(detail_file_path) and getmtime(detail_file_path) > gallery_file_mtime:
+        # Generated entries depend on both the gallery catalog and their template.
+        if exists(detail_file_path) and getmtime(detail_file_path) > inputs_mtime:
             continue
 
         with open(detail_file_path, "w") as f:

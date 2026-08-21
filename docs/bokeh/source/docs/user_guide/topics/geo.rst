@@ -15,7 +15,7 @@ Bokeh uses the `xyzservices`_ library to take care of the tile sources and their
 To add these to a plot, use the method :func:`~bokeh.models.plots.Plot.add_tile`. You can pass
 any name xyzservices may recognize. The ``retina`` keyword can control the resolution of tiles.
 
-.. bokeh-plot:: __REPO__/examples/topics/geo/tile_source.py
+.. bokeh-embed:: __REPO__/examples/topics/geo/tile_source.py
     :source-position: below
 
 If you pass ``retina=True``, Bokeh will attempt to use the tiles in the 2x higher resolution
@@ -30,7 +30,7 @@ Mercator coordinates.
 Alternatively, you can use any :class:`xyzservices.TileProvider`, either pre-defined in
 ``xyzservices`` or a custom one.
 
-.. bokeh-plot:: __REPO__/examples/topics/geo/tile_xyzservices.py
+.. bokeh-embed:: __REPO__/examples/topics/geo/tile_xyzservices.py
     :source-position: below
 
 The available built-in tile providers are listed in the `xyzservices`_ documentation or
@@ -74,7 +74,7 @@ To plot glyphs over a Google Map, use the function :func:`~bokeh.plotting.gmap`.
 For the function to work, you must pass it a `Google API Key`_ and configure the Google Map underlay :class:`~bokeh.models.map_plots.GMapOptions`.
 The Google API Key will be stored in the Bokeh Document JSON.
 
-.. bokeh-plot:: __REPO__/examples/topics/geo/gmap.py
+.. bokeh-embed:: __REPO__/examples/topics/geo/gmap.py
     :source-position: below
 
 .. note::
@@ -99,7 +99,7 @@ collection of features. Each feature can also have a set of properties.
 Bokeh's ``GeoJSONDataSource`` can be used almost seamlessly in place of Bokeh's
 ``ColumnDataSource``. For example:
 
-.. bokeh-plot:: __REPO__/examples/topics/geo/geojson_source.py
+.. bokeh-embed:: __REPO__/examples/topics/geo/geojson_source.py
     :source-position: above
 
 .. warning::
@@ -117,7 +117,7 @@ The `Cartopy`_ project offers the opportunity to display geographical informatio
 world projections. In Bokeh it is possible to display these projections. The example below
 uses 4 different projections and shows the coastlines of the world.
 
-.. bokeh-plot:: __REPO__/examples/topics/geo/cartopy_projections.py
+.. bokeh-embed:: __REPO__/examples/topics/geo/cartopy_projections.py
     :source-position: below
 
 The coastlines used in the example above are one feature offered by `Cartopy`_. In the example
@@ -125,14 +125,14 @@ below further features are added to a projection.
 The ocean, the land, borders and province borders as well as rivers and lakes are added
 to a map of Europe. The `scale` argument can be used to draw more precise information for a feature.
 
-.. bokeh-plot:: __REPO__/examples/topics/geo/europe.py
+.. bokeh-embed:: __REPO__/examples/topics/geo/europe.py
     :source-position: below
 
 The states feature can be used to add information of states/provinces of a country to a map. In the
 default resolution only the states of the USA are available. This feature is used to draw a colored
 map of the USA in the example below.
 
-.. bokeh-plot:: __REPO__/examples/topics/geo/us_states.py
+.. bokeh-embed:: __REPO__/examples/topics/geo/us_states.py
     :source-position: below
 
 The three examples above demonstrate how to draw world maps using plain Bokeh. The `Geoviews`_ project

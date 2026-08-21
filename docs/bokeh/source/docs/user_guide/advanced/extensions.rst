@@ -136,7 +136,7 @@ the custom extension exactly you would any built-in Bokeh model.
 
 This produces the following output:
 
-.. bokeh-plot:: __REPO__/examples/advanced/extensions/putting_together.py
+.. bokeh-embed:: __REPO__/examples/advanced/extensions/putting_together.py
     :source-position: none
 
 The rendered document automatically includes the JavaScript code for the

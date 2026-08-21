@@ -17,7 +17,7 @@ To create a basic bar chart, use the |hbar| (horizontal bars) or |vbar|
 (vertical bars) glyph methods. Please visit the detailed documentation page
 :ref:`ug_basic_bars`, because this type is so common.
 
-.. bokeh-plot:: __REPO__/examples/basic/bars/vbar.py
+.. bokeh-embed:: __REPO__/examples/basic/bars/vbar.py
     :source-position: above
 
 Quads
@@ -26,7 +26,7 @@ Quads
 To draw *axis aligned* rectangles by specifying the ``left``, ``right``,
 ``top``, and ``bottom`` positions, use the |quad| glyph function:
 
-.. bokeh-plot:: __REPO__/examples/basic/areas/quad.py
+.. bokeh-embed:: __REPO__/examples/basic/areas/quad.py
     :source-position: above
 
 Blocks
@@ -36,7 +36,7 @@ To draw *axis aligned* rectangles by specifying the ``x`` and ``y``
 coordinates for the origin, and a ``width`` and ``height``, use the |block|
 glyph function:
 
-.. bokeh-plot:: __REPO__/examples/basic/areas/block.py
+.. bokeh-embed:: __REPO__/examples/basic/areas/block.py
     :source-position: above
 
 Rotatable
@@ -45,7 +45,7 @@ Rotatable
 To draw arbitrary rectangles by specifying center coordinates, ``width``,
 ``height``, and ``angle``, use the |rect| glyph function:
 
-.. bokeh-plot:: __REPO__/examples/basic/areas/rect.py
+.. bokeh-embed:: __REPO__/examples/basic/areas/rect.py
     :source-position: above
 
 .. _ug_basic_areas_directed:
@@ -64,7 +64,7 @@ Single areas
 To fill an area in vertical direction, use the |varea| method. You can do the
 same in horizontal direction with |harea|.
 
-.. bokeh-plot:: __REPO__/examples/basic/areas/varea.py
+.. bokeh-embed:: __REPO__/examples/basic/areas/varea.py
     :source-position: above
 
 Stacked areas
@@ -73,7 +73,7 @@ Stacked areas
 To stack directed areas, use the |varea_stack| and |harea_stack| convenience
 methods.
 
-.. bokeh-plot:: __REPO__/examples/basic/areas/varea_stack.py
+.. bokeh-embed:: __REPO__/examples/basic/areas/varea_stack.py
     :source-position: above
 
 .. _ug_basic_areas_patches:
@@ -87,7 +87,7 @@ Single patches
 The following example generates a single polygonal patch from one-dimensional
 sequences of ``x`` and ``y`` points using the |patch| glyph method:
 
-.. bokeh-plot:: __REPO__/examples/basic/areas/patch_single.py
+.. bokeh-embed:: __REPO__/examples/basic/areas/patch_single.py
     :source-position: above
 
 Multiple patches
@@ -95,7 +95,7 @@ Multiple patches
 
 To plot several polygonal patches, use the |patches| glyph method:
 
-.. bokeh-plot:: __REPO__/examples/basic/areas/patch_multiple.py
+.. bokeh-embed:: __REPO__/examples/basic/areas/patch_multiple.py
     :source-position: above
 
 .. note::
@@ -113,7 +113,7 @@ Just as with the |line| and |multi_line| methods, you can pass ``NaN`` values
 to |patch| and |patches| glyphs. This produces disjointed patches with gaps
 for ``NaN`` values.
 
-.. bokeh-plot:: __REPO__/examples/basic/areas/patch_missing_points.py
+.. bokeh-embed:: __REPO__/examples/basic/areas/patch_missing_points.py
     :source-position: above
 
 .. warning::
@@ -143,7 +143,7 @@ The following example generates a single polygon from a triple-nested list of
 one-dimensional sequences of ``x`` and ``y`` points using the |multi_polygons|
 glyph method.
 
-.. bokeh-plot:: __REPO__/examples/basic/areas/multipolygon_simple.py
+.. bokeh-embed:: __REPO__/examples/basic/areas/multipolygon_simple.py
     :source-position: above
 
 Polygon with holes
@@ -153,7 +153,7 @@ The following example generates a single polygon with holes from three
 sequences of ``x`` and ``y`` points. The first sequence represents
 the exterior of the polygon and the following sequences represent the holes.
 
-.. bokeh-plot:: __REPO__/examples/basic/areas/multipolygon_with_holes.py
+.. bokeh-embed:: __REPO__/examples/basic/areas/multipolygon_with_holes.py
     :source-position: above
 
 Multi-polygon with separate parts
@@ -164,7 +164,7 @@ following example generates a multi-polygon glyph from several sequences of
 ``x`` and ``y`` points. Each item in the sequence represents a part of the
 glyph.
 
-.. bokeh-plot:: __REPO__/examples/basic/areas/multipolygon_with_separate_parts.py
+.. bokeh-embed:: __REPO__/examples/basic/areas/multipolygon_with_separate_parts.py
     :source-position: above
 
 Multiple multi-polygons
@@ -174,7 +174,7 @@ The top-level of nesting separates each multi-polygon from the rest. You can
 think of each multi-polygon as a row in the data source, potentially with a
 corresponding label or color.
 
-.. bokeh-plot:: __REPO__/examples/basic/areas/multipolygons.py
+.. bokeh-embed:: __REPO__/examples/basic/areas/multipolygons.py
     :source-position: above
 
 Strips
@@ -187,7 +187,7 @@ respectively. Note that these glyphs can only compute bounds in one axis, thus
 may require explicit range specification in the orthogonal axis, e.g. if used
 alone.
 
-.. bokeh-plot:: __REPO__/examples/basic/areas/strips.py
+.. bokeh-embed:: __REPO__/examples/basic/areas/strips.py
     :source-position: above
 
 Ellipses
@@ -196,7 +196,7 @@ Ellipses
 The |ellipse| glyph method accepts the same properties as |rect|, but renders
 ellipse shapes.
 
-.. bokeh-plot:: __REPO__/examples/basic/areas/ellipses.py
+.. bokeh-embed:: __REPO__/examples/basic/areas/ellipses.py
     :source-position: above
 
 .. |block|             replace:: :func:`~bokeh.plotting.figure.block`

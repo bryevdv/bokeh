@@ -5,12 +5,12 @@ bokeh.sphinxext
 
 Sphinx extensions for including Bokeh content in Sphinx documentation.
 
-bokeh_plot
-----------
+bokeh_embed
+-----------
 
-.. automodule:: bokeh.sphinxext.bokeh_plot
+.. automodule:: bokeh.sphinxext.bokeh_embed
 
-``bokeh-plot`` executes inline Python or an external example file and captures
+``bokeh-embed`` executes inline Python or an external example file and captures
 ordinary calls to :func:`~bokeh.io.show` and :func:`~bokeh.io.save`. Each
 captured value is compiled as a versioned :class:`~bokeh.embed.EmbedArtifact`.
 Multiple output calls and multiple roots are supported and retain their order.
@@ -19,7 +19,8 @@ Calls imported before execution are captured without replacing
 
 For HTML builders, all directives on a page share one deterministic JSON
 payload, one bootstrap, and the exact union of their required BokehJS bundles
-and custom-extension assets. Pages without plots receive no Bokeh resources.
+and custom-extension assets. Pages without embedded Bokeh content receive no
+Bokeh resources.
 Incremental builds track external example files, and a generated-asset
 manifest removes stale page payloads. Parallel readers merge page records
 without sharing mutable module state.
@@ -29,13 +30,13 @@ other artifact declarations. An external script may run before or after the
 page bootstrap and acquire the handle from a logical-root target::
 
     const target = document.querySelector(
-      "#my-plot-section [data-bokeh-root='root']",
+      "#my-embed-section [data-bokeh-root='root']",
     )
     const mounted = await Bokeh.when_mounted(target)
     await mounted.ready
 
 Scope the selector to a stable section or application container when a page has
-more than one plot. A multi-root artifact uses ``root-0``, ``root-1``, and so
+more than one embed. A multi-root artifact uses ``root-0``, ``root-1``, and so
 on; every one of its targets publishes the same handle. Disposal and remounting
 update those targets through the common lifecycle. Payload, schema, resource,
 and other pre-handle failures make ``when_mounted()`` reject with a structured
@@ -55,17 +56,17 @@ The directive options are:
 ``alt``
     Accessible fallback text for non-HTML and quick builders.
 
-Projects select resource delivery with ``bokeh_plot_resources``. It accepts
+Projects select resource delivery with ``bokeh_embed_resources``. It accepts
 ``cdn``, ``inline``, ``offline``, ``static``, ``none``, any normal
 :class:`~bokeh.embed.ResourcePolicy` mode, a ``Resources`` or
 ``ResourcePolicy`` object, or a mapping of policy fields. ``static`` copies
-only the required local bundles under ``_static/bokeh-plot/vendor``. ``none``
+only the required local bundles under ``_static/bokeh-embed/vendor``. ``none``
 means the host page already owns a compatible BokehJS runtime. Additional
 policy fields such as ``nonce``, ``integrity``, ``crossorigin``, and
-``external_only`` belong in ``bokeh_plot_resource_options``::
+``external_only`` belong in ``bokeh_embed_resource_options``::
 
-    bokeh_plot_resources = "cdn"
-    bokeh_plot_resource_options = {
+    bokeh_embed_resources = "cdn"
+    bokeh_embed_resource_options = {
         "integrity": True,
         "crossorigin": "anonymous",
         "nonce": "documentation-csp-nonce",
@@ -82,18 +83,35 @@ back to a second resource loader.
 
 Static artifacts cannot run Python callbacks. By default, the directive treats
 them as an error with source location and recommends ``CustomJS`` or a Bokeh
-server. Set ``bokeh_plot_callback_policy`` to ``warn`` or ``suppress`` only
+server. Set ``bokeh_embed_callback_policy`` to ``warn`` or ``suppress`` only
 when a project intentionally accepts that limitation. Bokeh server
 applications are not valid directive output.
 
 Bokeh 4.0 migration
 ~~~~~~~~~~~~~~~~~~~
 
+The extension and directive were renamed because they embed any supported
+Bokeh content, including layouts, widgets, tables, and custom models—not only
+plots. Update projects as follows:
+
+* ``bokeh.sphinxext.bokeh_plot`` becomes
+  ``bokeh.sphinxext.bokeh_embed``.
+* ``.. bokeh-plot::`` becomes ``.. bokeh-embed::``.
+* ``bokeh_plot_resources``, ``bokeh_plot_resource_options``, and
+  ``bokeh_plot_callback_policy`` become ``bokeh_embed_resources``,
+  ``bokeh_embed_resource_options``, and ``bokeh_embed_callback_policy``.
+* Generated assets move from ``_static/bokeh-plot`` to
+  ``_static/bokeh-embed``. A successful build with the renamed extension
+  removes assets listed in the old directory's manifest.
+
+The old extension path, directive, and configuration names produce actionable
+migration errors instead of silently selecting different behavior.
+
 The extension no longer calls ``autoload_static()`` and does not emit a
 UUID-named JavaScript program for each directive. Projects that customized or
 copied those generated programs should instead configure
-``bokeh_plot_resources`` and serve the deterministic page payloads generated
-under ``_static/bokeh-plot``. Examples may keep ``output_file()`` and
+``bokeh_embed_resources`` and serve the deterministic page payloads generated
+under ``_static/bokeh-embed``. Examples may keep ``output_file()`` and
 ``output_notebook()`` calls for source compatibility; during directive
 execution these calls are captured as inert output configuration and do not
 change global state. Custom wrappers should consume :func:`bokeh.embed.embed`

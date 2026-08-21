@@ -40,7 +40,7 @@ Creating a simple line chart
 Your first visualization will be a plot with a single line that looks like
 this:
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_1_simple_line.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_1_simple_line.py
     :source-position: none
 
 Even a simple graph like this has interactive features. Use the tools on the
@@ -129,7 +129,7 @@ Combining multiple graphs
 
 With Bokeh's |bokeh.plotting| interface, you can add more glyphs to your plot:
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_1_multiple_lines.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_1_multiple_lines.py
     :source-position: none
 
 To add more line graphs to your plot, all you need to do is call the

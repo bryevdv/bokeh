@@ -12,26 +12,26 @@ Bokeh includes a large variety of markers for creating scatter plots. For
 example, to render circle scatter markers on a plot, use the |scatter|
 method of |figure| with the default marker "circle".
 
-.. bokeh-plot:: __REPO__/examples/basic/scatters/scatter_circle.py
+.. bokeh-embed:: __REPO__/examples/basic/scatters/scatter_circle.py
     :source-position: above
 
 Similarly, use the |scatter| method of |figure| with the marker "square"
 to scatter square markers on a plot.
 
-.. bokeh-plot:: __REPO__/examples/basic/scatters/scatter_square.py
+.. bokeh-embed:: __REPO__/examples/basic/scatters/scatter_square.py
     :source-position: above
 
 Bokeh's built-in scatter markers consist of a set of base markers, most of which
 can be combined with different kinds of additional visual features. This is an
 overview of all available scatter markers:
 
-.. bokeh-plot:: __REPO__/examples/basic/scatters/markertypes.py
+.. bokeh-embed:: __REPO__/examples/basic/scatters/markertypes.py
     :source-position: none
 
 Bokeh also offers the opportunity to define custom markers. See
 :attr:`bokeh.models.Scatter.defs` for an introduction.
 
-.. bokeh-plot:: __REPO__/examples/basic/scatters/custom_markers.py
+.. bokeh-embed:: __REPO__/examples/basic/scatters/custom_markers.py
     :source-position: none
 
 All the supported makers are available as individual methods of |figure|, too.
@@ -93,7 +93,7 @@ point.
     canvas elements. For similar reasons, if the page is HTTPS, then the
     URLs for the images must also be HTTPS.
 
-.. bokeh-plot:: __REPO__/examples/basic/scatters/image_url.py
+.. bokeh-embed:: __REPO__/examples/basic/scatters/image_url.py
     :source-position: none
 
 .. |circle|    replace:: :func:`~bokeh.plotting.figure.circle`

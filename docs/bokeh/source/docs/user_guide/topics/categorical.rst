@@ -47,7 +47,7 @@ By default, this plot would show thousands of points overlapping in a narrow lin
 each day. The ``jitter`` function lets you differentiate the points to produce a useful
 plot:
 
-.. bokeh-plot:: __REPO__/examples/topics/categorical/scatter_jitter.py
+.. bokeh-embed:: __REPO__/examples/topics/categorical/scatter_jitter.py
     :source-position: above
 
 .. _ug_topics_categorical_offsets:
@@ -87,14 +87,14 @@ modify it by adding a list of ``offsets``:
 
 This will shift each bar horizontally by the corresponding offset.
 
-.. bokeh-plot:: __REPO__/examples/topics/categorical/categorical_offset.py
+.. bokeh-embed:: __REPO__/examples/topics/categorical/categorical_offset.py
     :source-position: none
 
 Below is a more sophisticated example of a ridge plot. It uses
 categorical offsets to specify patch coordinates for each
 category:
 
-.. bokeh-plot:: __REPO__/examples/topics/categorical/ridgeplot.py
+.. bokeh-embed:: __REPO__/examples/topics/categorical/ridgeplot.py
     :source-position: below
 
 .. _ug_topics_categorical_slope_graph:
@@ -115,7 +115,7 @@ emissions per person in different countries over a period of years or decades.
 It uses the :class:`~bokeh.models.glyphs.Segment` glyph to draw the line connecting the
 paired dots:
 
-.. bokeh-plot:: __REPO__/examples/topics/categorical/slope_graph.py
+.. bokeh-embed:: __REPO__/examples/topics/categorical/slope_graph.py
     :source-position: above
 
 Two or more categorical variables
@@ -139,12 +139,12 @@ colors of the plot because the unemployment rate is a continuous variable.
 This plot also uses :func:`~bokeh.models.GlyphRenderer.construct_color_bar`
 to provide a visual legend on the right:
 
-.. bokeh-plot:: __REPO__/examples/topics/categorical/heatmap_unemployment.py
+.. bokeh-embed:: __REPO__/examples/topics/categorical/heatmap_unemployment.py
     :source-position: below
 
 The following periodic table uses several of the techniques in this chapter:
 
-.. bokeh-plot:: __REPO__/examples/topics/categorical/periodic.py
+.. bokeh-embed:: __REPO__/examples/topics/categorical/periodic.py
     :source-position: below
 
 .. _ug_topics_categorical_correlograms:
@@ -169,5 +169,5 @@ colors of the plot in order to highlight the correlations between the pair of el
 This mapper is also uses :func:`~bokeh.models.GlyphRenderer.construct_color_bar`
 to provide a visual legend below:
 
-.. bokeh-plot:: __REPO__/examples/topics/categorical/correlogram.py
+.. bokeh-embed:: __REPO__/examples/topics/categorical/correlogram.py
     :source-position: below

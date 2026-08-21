@@ -36,7 +36,7 @@ def _inject_early_consumer(output: Path) -> None:
     )
     index = output / "index.html"
     html = index.read_text(encoding="utf-8")
-    marker = '<script src="_static/bokeh-plot/bokeh-sphinx-bootstrap.js"'
+    marker = '<script src="_static/bokeh-embed/bokeh-sphinx-bootstrap.js"'
     assert html.count(marker) == 1
     html = html.replace(marker, '<script src="_static/bokeh-sphinx-consumer.js"></script>\n' + marker)
     index.write_text(html, encoding="utf-8")
@@ -48,9 +48,9 @@ def _build_static_page(tmp_path: Path, source_text: str) -> Path:
     doctrees = tmp_path / "doctrees"
     source.mkdir()
     (source / "conf.py").write_text(
-        "extensions = ['bokeh.sphinxext.bokeh_plot']\n"
-        "project = 'bokeh-plot-browser-test'\n"
-        "bokeh_plot_resources = 'static'\n",
+        "extensions = ['bokeh.sphinxext.bokeh_embed']\n"
+        "project = 'bokeh-embed-browser-test'\n"
+        "bokeh_embed_resources = 'static'\n",
         encoding="utf-8",
     )
     (source / "index.rst").write_text(source_text, encoding="utf-8")
@@ -91,22 +91,22 @@ def _page_result(page: Any) -> dict[str, Any]:
 def test_static_page_renders_with_request_and_size_budgets(tmp_path: Path) -> None:
     output = _build_static_page(tmp_path,
         "Browser\n=======\n\n"
-        ".. bokeh-plot::\n   :source-position: none\n\n"
+        ".. bokeh-embed::\n   :source-position: none\n\n"
         "   from bokeh.plotting import figure, show\n"
         "   first = figure(width=240, height=160)\n"
         "   second = figure(width=180, height=120)\n"
         "   first.scatter([1, 2], [3, 4])\n"
         "   second.line([1, 2], [4, 3])\n"
         "   show([first, second])\n\n"
-        ".. bokeh-plot::\n   :source-position: none\n\n"
+        ".. bokeh-embed::\n   :source-position: none\n\n"
         "   from bokeh.io import show\n"
         "   from bokeh.models import Button\n"
         "   show(Button(label='ready'))\n",
     )
     _inject_early_consumer(output)
 
-    generated = output / "_static" / "bokeh-plot"
-    payloads = list(generated.glob("bokeh-plot-*.json"))
+    generated = output / "_static" / "bokeh-embed"
+    payloads = list(generated.glob("bokeh-embed-*.json"))
     assert len(payloads) == 1
     assert payloads[0].stat().st_size < 100_000
     assert (generated / "bokeh-sphinx-bootstrap.js").stat().st_size < 8_000
@@ -140,8 +140,8 @@ def test_static_page_renders_with_request_and_size_budgets(tmp_path: Path) -> No
                 "mountedAttributes": ["", "", ""],
                 "hasSphinxRegistry": False,
             }
-            initial_plot_requests = [url for url in requests if "/_static/bokeh-plot/" in url]
-            assert len(initial_plot_requests) == len(set(initial_plot_requests)) == 5
+            initial_embed_requests = [url for url in requests if "/_static/bokeh-embed/" in url]
+            assert len(initial_embed_requests) == len(set(initial_embed_requests)) == 5
             disposed = page.evaluate("""async () => {
               const targets = [...document.querySelectorAll("[data-bokeh-page-artifact][data-bokeh-root]")]
               const firstKey = targets[0].dataset.bokehPageArtifact
@@ -174,9 +174,9 @@ def test_static_page_renders_with_request_and_size_budgets(tmp_path: Path) -> No
     assert errors == []
     bokeh_requests = [url for url in requests if "/vendor/js/bokeh" in url]
     assert len(bokeh_requests) == len(set(bokeh_requests)) == 3
-    plot_requests = [url for url in requests if "/_static/bokeh-plot/" in url]
-    assert len(plot_requests) == 6
-    assert len(set(plot_requests)) == 5  # remount deliberately re-fetches the page payload
+    embed_requests = [url for url in requests if "/_static/bokeh-embed/" in url]
+    assert len(embed_requests) == 6
+    assert len(set(embed_requests)) == 5  # remount deliberately re-fetches the page payload
 
 
 @pytest.mark.parametrize(
@@ -185,13 +185,13 @@ def test_static_page_renders_with_request_and_size_budgets(tmp_path: Path) -> No
 def test_pre_handle_failures_reject_early_and_late_consumers(tmp_path: Path, failure: str) -> None:
     output = _build_static_page(
         tmp_path,
-        "Failure\n=======\n\n.. bokeh-plot::\n   :source-position: none\n\n"
+        "Failure\n=======\n\n.. bokeh-embed::\n   :source-position: none\n\n"
         "   from bokeh.io import show\n"
         "   from bokeh.models import Button\n"
         "   show([Button(label='first'), Button(label='second')])\n",
     )
     _inject_early_consumer(output)
-    [payload_path] = (output / "_static" / "bokeh-plot").glob("bokeh-plot-*.json")
+    [payload_path] = (output / "_static" / "bokeh-embed").glob("bokeh-embed-*.json")
     if failure == "missing-payload":
         payload_path.unlink()
     elif failure in ("page-schema", "artifact-schema"):
@@ -202,7 +202,7 @@ def test_pre_handle_failures_reject_early_and_late_consumers(tmp_path: Path, fai
             payload["artifacts"][0]["artifact"]["schema"] = "bokeh.embed/invalid"
         payload_path.write_text(json.dumps(payload), encoding="utf-8")
     elif failure == "resource":
-        (output / "_static" / "bokeh-plot" / "vendor" / "js" / "bokeh-widgets.min.js").unlink()
+        (output / "_static" / "bokeh-embed" / "vendor" / "js" / "bokeh-widgets.min.js").unlink()
     else:
         index = output / "index.html"
         html = index.read_text(encoding="utf-8")

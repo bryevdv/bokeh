@@ -67,7 +67,7 @@ The ``SetValue`` model has the following properties:
 Based on these parameters, Bokeh creates the necessary JavaScript code
 automatically:
 
-.. bokeh-plot:: __REPO__/examples/interaction/js_callbacks/setvalue.py
+.. bokeh-embed:: __REPO__/examples/interaction/js_callbacks/setvalue.py
     :source-position: below
 
 .. _ug_interaction_js_callbacks_customjs:
@@ -221,7 +221,7 @@ The following example attaches a ``CustomJS`` callback to a ``Slider`` widget.
 Whenever the slider value updates, the callback updates the plot data with a
 custom formula:
 
-.. bokeh-plot:: __REPO__/examples/interaction/js_callbacks/js_on_change.py
+.. bokeh-embed:: __REPO__/examples/interaction/js_callbacks/js_on_change.py
     :source-position: above
 
 .. _ug_interaction_js_callbacks_customjs_js_on_event:
@@ -264,7 +264,7 @@ attribute) as well as all the other applicable event attributes. The
 result is a plot that displays the corresponding event on the right when the
 user interacts with it:
 
-.. bokeh-plot:: __REPO__/examples/interaction/js_callbacks/js_on_event.py
+.. bokeh-embed:: __REPO__/examples/interaction/js_callbacks/js_on_event.py
     :source-position: above
 
 JS callbacks for document events can be registered with ``Document.js_on_event()``
@@ -301,7 +301,7 @@ A common use case for property callbacks is responding to changes to widgets.
 The code below shows an example of ``CustomJS`` set on a slider Widget that
 changes the source of a plot when the slider is used.
 
-.. bokeh-plot:: __REPO__/examples/interaction/js_callbacks/customjs_for_widgets.py
+.. bokeh-embed:: __REPO__/examples/interaction/js_callbacks/customjs_for_widgets.py
     :source-position: above
 
 CustomJS for selections
@@ -313,14 +313,14 @@ below simply copies selected points on the first plot to the second. However,
 more sophisticated actions and computations are easily constructed in a
 similar way.
 
-.. bokeh-plot:: __REPO__/examples/interaction/js_callbacks/customjs_for_selection.py
+.. bokeh-embed:: __REPO__/examples/interaction/js_callbacks/customjs_for_selection.py
     :source-position: above
 
 Another more sophisticated example is shown below. It computes the average `y`
 value of any selected points (including multiple disjoint selections) and draws
 a line through that value.
 
-.. bokeh-plot:: __REPO__/examples/interaction/js_callbacks/customjs_lasso_mean.py
+.. bokeh-embed:: __REPO__/examples/interaction/js_callbacks/customjs_lasso_mean.py
     :source-position: above
 
 CustomJS for ranges
@@ -329,7 +329,7 @@ CustomJS for ranges
 The properties of range objects may also be connected to ``CustomJS`` callbacks
 in order to perform topics work whenever a range changes:
 
-.. bokeh-plot:: __REPO__/examples/interaction/js_callbacks/customjs_for_range_update.py
+.. bokeh-embed:: __REPO__/examples/interaction/js_callbacks/customjs_for_range_update.py
     :source-position: above
 
 CustomJS for tools
@@ -340,7 +340,7 @@ callback for ``SelectionGeometry`` uses the ``BoxSelectTool`` geometry (accessed
 via the geometry field of the ``cb_data`` callback object), in order to update a
 ``Rect`` glyph.
 
-.. bokeh-plot:: __REPO__/examples/interaction/js_callbacks/customjs_for_tools.py
+.. bokeh-embed:: __REPO__/examples/interaction/js_callbacks/customjs_for_tools.py
     :source-position: above
 
 
@@ -365,7 +365,7 @@ The ``HoverTool`` has a callback which comes with two pieces of built-in data:
 the ``index`` and the ``geometry``. The ``index`` is the indices of any points
 that the hover tool is over.
 
-.. bokeh-plot:: __REPO__/examples/interaction/js_callbacks/customjs_for_hover.py
+.. bokeh-embed:: __REPO__/examples/interaction/js_callbacks/customjs_for_hover.py
     :source-position: above
 
 OpenURL
@@ -379,7 +379,7 @@ action called whenever the user clicks on the glyph.
 The following code shows how to use the OpenURL action combined with a TapTool
 to open an URL whenever the user clicks on a circle.
 
-.. bokeh-plot:: __REPO__/examples/interaction/js_callbacks/open_url.py
+.. bokeh-embed:: __REPO__/examples/interaction/js_callbacks/open_url.py
     :source-position: above
 
 Please note that ``OpenURL`` callbacks specifically and only work with
