@@ -13,5 +13,4 @@ export interface RenderItem {
   roots?: Roots
   root_ids?: ID[]
   use_for_title?: boolean
-  notebook_comms_target?: string
 }

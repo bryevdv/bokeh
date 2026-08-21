@@ -1,7 +1,8 @@
 export {mount_document_standalone, StandaloneMount, index} from "./standalone"
 export type {StandaloneMountOptions} from "./standalone"
-export {add_document_from_session} from "./server"
-export {embed_items_notebook, kernels} from "./notebook"
+export {add_document_from_session, cancel_session_for_element, close_session_for_document} from "./server"
+export {create_notebook_patch_receiver, NotebookPatchError} from "./notebook"
+export type {NotebookPatch} from "./notebook"
 export {
   ArtifactError, compute_embed_artifact_fingerprint, embed_artifact_schema,
   is_embed_artifact, validate_embed_artifact,
