@@ -1,3 +1,4 @@
+/Users/bryan/.zlogin:9: nice(5) failed: operation not permitted
 # Initiative summary: coherent embedding across Python, BokehJS, docs, frameworks, and notebooks
 
 ## Proposed initiative
@@ -44,12 +45,25 @@ The existing framework work provides the core `mount()`/`BokehMount` direction a
 
 Jupyter follows the common artifact/runtime work. Static display, live handles, server apps, Colab, AnyWidget, marimo, saved output, and export remain supported, but notebook code owns only host integration and transport. The latest review's cleanup, bounded-history, source-test, export-safety, concurrency, and test-matrix blockers are explicit initiative deliverables rather than follow-up debt.
 
-Panel is the final downstream validation layer. After the Bokeh stack is complete, audit Panel's embedding, resource, notebook, server, custom-model, and export integrations against the finished 4.0 contract and produce a concrete downstream patch proposal. Panel should migrate to the common layers rather than causing Bokeh to preserve removed internal envelopes or parallel lifecycle machinery.
+Panel is the final downstream validation layer. The completed audit pinned Panel
+at `be0b5e2b0955a38a8871aa3fc1703b57c76c1e81` and produced an applicable
+35-file migration diff. Static HTML, templates, protocol-full state replay,
+notebook initial display, Tornado server pages/autoload compatibility, BokehJS
+4 extension APIs, readiness/errors, and mount disposal are mapped to the common
+stack. Pyodide/PyScript is explicitly rejected until its transport is rewritten;
+no Bokeh legacy envelope was restored for Panel.
+
+The audit also corrected earlier assumptions: token-bearing server artifacts and
+declarative mount observability already exist. Remaining reusable gaps are
+payload-level satisfaction of host-owned extensions, a public protocol-2 seam
+for third-party notebook hosts, and a public owning loop/scheduler on
+`ServerContext`.
 
 ## Delivery stack
 
 ```text
 EMBED 00  Contract, fixtures, coordination, and verification
+EMBED 00A Lifecycle-aware BokehJS model factories and rollback
 EMBED 01  BokehJS mount lifecycle and framework adapters
 EMBED 02  Minimal IDs integrated with lifecycle-safe construction
 EMBED 03  Artifact compiler, renderers, resource resolver/loader, retained facades and migration errors
@@ -58,13 +72,13 @@ EMBED 05  Jupyter and notebook host adapters
 EMBED 06  Panel downstream impact assessment and patch proposal
 ```
 
-The branches are intentionally stackable in that order. Framework lifecycle precedes minimal-ID conflict resolution; both precede the artifact/runtime that consumes them. Sphinx is the first production static consumer. Jupyter validates the most demanding live-host cases. Panel runs last as a downstream compatibility audit against the completed design.
+The branches are intentionally stackable in that order. Lifecycle-aware model construction is a factored prerequisite for framework mounting, which precedes minimal-ID conflict resolution; all three precede the artifact/runtime that consumes them. Sphinx is the first production static consumer. Jupyter validates the most demanding live-host cases. Panel runs last as a downstream compatibility audit against the completed design.
 
 ## Testing expectations
 
 Treat cross-language fixtures and host lifecycle tests as part of the design, not cleanup. Required coverage includes schema compatibility and errors, anonymous/shared/cyclic graphs, keyed multi-root and shared-document mounting, sequential/concurrent additive resource loading, disposal and rollback leak tests, every retained facade and 4.0 migration diagnostic, page-level docs resource/request budgets, notebook output replacement and virtualization, bounded patch buffers, comm failures/timeouts, renderer rerender/disposal, trust/removal, safe and concurrent exports, and explicitly executed AnyWidget/marimo CI jobs.
 
-All seven tasks run project commands through `/Users/bryan/anaconda3/bin/conda run -n bokeh-embed ...`. Python tests use `python -m pytest -o pythonpath=src ...` after verifying the import path; the shared environment must not be repointed with an editable install.
+All eight tasks run project commands through `/Users/bryan/anaconda3/bin/conda run -n bokeh-embed ...`. Python tests use `python -m pytest -o pythonpath=src ...` after verifying the import path; the shared environment must not be repointed with an editable install.
 
 ## Definition of done
 
@@ -73,5 +87,5 @@ All seven tasks run project commands through `/Users/bryan/anaconda3/bin/conda r
 - Frameworks, docs, and Jupyter use the same mount/lifecycle and resource contracts.
 - The docs no longer ship all BokehJS bundles for each directive and enforce page budgets.
 - Bokeh 4.0 removes legacy envelopes and return-shape machinery that would distort the shared design while providing clear replacements for their use cases.
-- Panel has an evidence-backed, file-specific downstream patch proposal and validation matrix against the completed stack.
+- Panel has an evidence-backed, applicable downstream patch and validation matrix against the completed stack; its remaining WASM and optional-host work is explicitly bounded rather than reported as supported.
 - The replacement branch stack has recorded ancestry, range-diff/equivalence, conflict resolution, branch-local test results, and task/worktree mapping before old Codex tasks or source branches are removed.

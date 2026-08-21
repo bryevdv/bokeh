@@ -1,3 +1,4 @@
+/Users/bryan/.zlogin:9: nice(5) failed: operation not permitted
 # A coherent embedding architecture for Bokeh
 
 Status: proposal.
@@ -16,7 +17,7 @@ The important unification is therefore below those forms:
 4. One BokehJS `mount()` path accepts the artifact, resolves actual DOM elements, ensures resources, and returns an `EmbedHandle` with readiness, errors, and disposal.
 5. Useful familiar APIs delegate to that pipeline; obsolete wire shapes and control flags are removed at the Bokeh 4.0 boundary or fail with an explicit migration error.
 
-The `minimal-ids` work should land as part of this foundation. Standalone artifacts should preserve IDs only for models whose identity crosses a serialization boundary: explicitly mounted roots, shared or cyclic models, and any other protocol-visible references. DOM mount identity must be separate from model identity and should not require generated element IDs.
+The `minimal-ids` work should land as part of this foundation. Standalone artifacts should preserve IDs only for models whose identity cannot be reconstructed structurally, such as shared or cyclic models, and for other protocol-visible references. Artifact roots are addressed by logical key plus document/root ordinal, so DOM mounting does not force model IDs or generated element IDs.
 
 The Sphinx directive should be the first major consumer of the new pipeline. A docs page should contain one bootstrap, at most one copy of each actually required BokehJS bundle, and one page-level payload. It should not generate one autoload program per plot.
 
@@ -238,8 +239,8 @@ The compiled artifact is immutable and JSON-compatible. A representative shape i
     "document": {"version": "4.1.0", "title": "", "roots": []}
   },
   "roots": [
-    {"key": "summary", "model_id": "p1001"},
-    {"key": "detail", "model_id": "p1002"}
+    {"key": "summary", "document": 0, "root": 0},
+    {"key": "detail", "document": 0, "root": 1}
   ],
   "requires": {
     "components": ["bokeh/core", "bokeh/widgets"],
@@ -272,9 +273,10 @@ That policy should become the embedding compiler's default. It should be applied
 
 The compiler should define the externally referenced set explicitly. At minimum it includes:
 
-- every root named in the artifact's `roots` table;
 - models referenced more than once or in cycles, as found by the minimal-ID analysis;
 - models whose IDs are used by a supported patch/comms/server protocol boundary.
+
+The normal artifact root table is structural: logical key plus document/root ordinal. A root belongs in the externally referenced ID set only when a separate compatibility or live protocol explicitly addresses it by model ID.
 
 Separately:
 
@@ -409,6 +411,36 @@ Server artifacts/options need to cover all existing behavior:
 
 The server knows the initial session document and can report its exact initial requirements. Because a server application can add new model types later, the runtime also needs an additive resource mechanism. In the short term, server policy may conservatively include standard dynamic bundles while standalone/docs artifacts are exact. In the target state, protocol messages that introduce a not-yet-registered model should be preceded by or carry a resource requirement update.
 
+### EMBED 03 implementation record
+
+The initial implementation resolves several choices left open above:
+
+- standalone inputs are normalized into exactly one compiler document and use
+  EMBED 02's graph-minimal `Document.to_static_json()` seam; independent
+  documents become independent artifacts;
+- every rendered artifact requires `bokeh/api` because the established
+  `Bokeh.mount()`/`BokehMount` lifecycle lives in that bundle; core artifact
+  decoding does not import the API bundle across bundle boundaries;
+- allocation-dependent retained graph IDs are structurally normalized for the
+  artifact fingerprint, while resource policy and renderer options contribute
+  to a separate typed-output build fingerprint;
+- page/fragment resource policies resolve assets before the stable declaration
+  bootstrap runs; programmatic mounts may use the shared promise loader for
+  additive bundles;
+- resources are page-shared, server sessions are mount-owned, and both are
+  reported with document/view/target ownership on the same handle;
+- inline and offline are distinct policies: inline rejects URL-only extension
+  requirements, while offline rejects every external asset; strict
+  `external_only` output requires both an external artifact payload and an
+  external bootstrap;
+- `/embed.json` replaces the server autoload program in the per-application
+  route set and returns the signed session token used by the server-source
+  decoder.
+
+The complete 4.0 recipes, schema notes, and downstream propagation decisions
+are recorded in `outputs/embed-03-artifact-runtime.md`; deterministic payload
+and bundle results are in `outputs/embed-03-artifact-measurements.md`.
+
 ## Sphinx and documentation builds as a primary design case
 
 ### Current cost and failure mode
@@ -482,6 +514,25 @@ artifacts = [embed(obj) for obj in captured.shown]
 The real `show()`, `save()`, `output_file()`, and `output_notebook()` functions consult the sink. Existing example source remains unchanged, including direct imports, but no module globals are patched. The capture records multiple `show()` calls in order. A narrow compatibility path can handle examples that explicitly instantiate `Document`, but replacing the exported class globally should not be the default.
 
 This output-capture facility is also useful for gallery builders and downstream documentation systems.
+
+### EMBED 04 implementation evidence
+
+The completed Sphinx consumer follows this design without introducing another
+embedding stack. Directives compile `EmbedArtifact` values through `embed()`;
+the docs-private `bokeh.embed-page/v1` file is only a page aggregation envelope.
+Its bootstrap resolves logical root keys to mount elements and delegates each
+artifact to the shared `Bokeh.mount()`/`BokehMount` lifecycle. Resource tags
+come from the common resolver and typed renderer after an exact requirements
+union.
+
+The clean parallel full-docs build completed 570 source files in 201.89 seconds
+and produced 490 deterministic page payloads. A no-change incremental build
+completed in 28.00 seconds with identical manifest and payload-corpus hashes.
+The highest-density generated page mounted all 42 roots with four exact bundles,
+one payload, one bootstrap, and no browser console errors. Core/plot, tables,
+WebGL, MathJax, and compiled custom-extension pages also passed full-output
+browser smoke tests. Detailed bytes, requests, hashes, and focused validation
+totals are in `outputs/embed-04-sphinx-measurements.md`.
 
 ## Proposed public API and 4.0 migration mapping
 
@@ -706,6 +757,10 @@ Initial docs acceptance targets should be structural and unambiguous:
 ### Phase 0: Contract and regressions
 
 - Write the artifact schema proposal and shared fixtures.
+- Factor lifecycle-aware BokehJS model construction, protected constructors,
+  deferred finalization, and rollback into a buildable prerequisite below the
+  mount/framework layer. The contract/coordination branch itself does not
+  depend on `HasProps.create()`.
 - Add tests reproducing title mutation, ignored server model selection, multi-root autoload failure, core-then-widget loading, key-order sensitivity, and missing lifecycle/error behavior.
 - Land or rebase the `minimal-ids` work with its cross-language round-trip tests.
 
@@ -793,7 +848,51 @@ Treat the completed Bokeh 4.0 embedding stack as the input, then evaluate Panel 
 - cover static HTML, templates, notebooks, Panel server, multiple roots, custom extensions, resource ownership, errors, readiness, and disposal;
 - do not add a Bokeh compatibility shim solely to preserve Panel internals when Panel can migrate cleanly.
 
-The deliverable is an evidence-backed impact assessment and a reviewable patch proposal or draft diff for Panel. Any newly discovered cross-layer contract issue is reported back to EMBED 00 before either repository commits to an incompatible workaround.
+The final deliverable is an evidence-backed impact assessment plus an applicable
+35-file Panel diff at revision
+`be0b5e2b0955a38a8871aa3fc1703b57c76c1e81`. The diff is exercised against the
+completed stack and keeps unsupported WASM transport paths behind explicit
+migration errors instead of fabricating compatibility.
+
+### Panel audit refinements to the shared contract
+
+The final downstream audit distinguishes three implemented seams from three
+remaining reusable gaps.
+
+Implemented seams that Panel can consume directly are:
+
+1. `embed_server(token=..., roots=...)` represents an already-created server
+   session. Panel does not need to rebuild token-bearing `RenderItem` data.
+2. `mount_artifact_declaration()` stores the created handle as
+   `target.bokehMount`, exposing readiness, errors, and disposal without a
+   global mount registry.
+3. Patch-bearing static output can choose protocol-full serialization through
+   `notebook_content(..., live=True)`. Panel therefore does not need a global
+   exception to graph-minimal static IDs. A source-neutral public export of the
+   underlying `embed_protocol()` compiler would improve naming outside
+   notebooks, but it is not a correctness blocker.
+
+The remaining reusable gaps are:
+
+1. A host that already supplies a named extension needs a public way to satisfy
+   that requirement at compile/render time without carrying the same compiled
+   extension content inside the artifact. `resources="none"` prevents duplicate
+   execution but not duplicate payload bytes. A single Panel Button artifact
+   carried 768,401 inline bytes of `panel.min.js` and was 787,958 bytes overall
+   even though the page separately owned the Panel bundle.
+2. Third-party connected-notebook hosts need a public protocol-2 host seam for
+   resource records/leases and transport binding. The artifact compiler and
+   `BokehMount.document` are public, but Bokeh's complete connected-display
+   ownership machinery is currently private to its notebook adapters.
+3. `ServerContext` needs a public owning scheduler/loop accessor. Bokeh 4 may
+   initialize safe handlers in a worker, where `IOLoop.current()` is not the
+   server loop. Panel's draft has to reach through
+   `application_context.io_loop` to schedule server work correctly.
+
+These gaps do not justify retaining `RenderItem`, `JsonItem`, autoload programs,
+`embed_item(s)()`, legacy notebook templates, or a Panel-specific Bokeh shim.
+Panel owns its template-root adapter, compiled resources/routes, PyViz comm and
+Pyodide transports, BokehJS extension migration, and output mount disposal.
 
 ## Risks and decisions to settle in the design review
 
