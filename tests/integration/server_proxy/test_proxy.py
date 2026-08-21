@@ -181,7 +181,10 @@ def test_bokeh_application_through_reverse_proxy(reverse_proxy: None) -> None:
             assert marker.text_content() == "Bokeh reverse proxy ready"
             assert marker.get_attribute("data-host") == "127.0.0.1:8080"
             assert marker.get_attribute("data-root-path") == ""
-            assert page.evaluate("Bokeh.documents.length") == 1
+            assert page.evaluate(
+                "new Set([...document.querySelectorAll('[data-bokeh-root]')]"
+                ".map((target) => target.bokehMount?.document).filter((doc) => doc != null)).size",
+            ) == 1
 
             # No application messages cross the websocket while idle, so the
             # backend's keepalive traffic must keep it open past the proxy timeout.

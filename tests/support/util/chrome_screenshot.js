@@ -101,7 +101,15 @@ CDP(async function(client) {
   }
 
   async function is_idle() {
-    const expr = "Bokeh.documents.length > 0 && Bokeh.documents.every((doc) => doc.is_idle)"
+    const expr = `(() => {
+      const mounts = new Set(
+        [...document.querySelectorAll("[data-bokeh-root]")]
+          .map((target) => target.bokehMount)
+          .filter((mount) => mount != null),
+      )
+      return mounts.size != 0
+        && [...mounts].every((mount) => mount.state == "ready" && mount.document.is_idle)
+    })()`
     const result = await evaluate(expr)
     return result != null && result.value === true
   }
@@ -110,7 +118,11 @@ CDP(async function(client) {
     const expr0 = `JSON.stringify(getComputedStyle(document.body))`
     const result0 = await evaluate(expr0)
 
-    const expr1 = "JSON.stringify(Bokeh.index.roots.map((view) => view.el.getBoundingClientRect()))"
+    const expr1 = `JSON.stringify([...new Set(
+      [...document.querySelectorAll("[data-bokeh-root]")]
+        .map((target) => target.bokehMount)
+        .filter((mount) => mount != null),
+    )].flatMap((mount) => mount.views.map((view) => view.el.getBoundingClientRect())))`
     const result1 = await evaluate(expr1)
 
     if (result0 != null && result1 != null) {

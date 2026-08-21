@@ -20,7 +20,6 @@ from urllib.request import urlopen
 # External imports
 import pytest
 
-
 pytestmark = pytest.mark.skipif(
     shutil.which("marimo") is None or importlib.util.find_spec("anywidget") is None,
     reason="marimo and AnyWidget 0.11 or later are required",
@@ -101,12 +100,7 @@ def test_marimo_renders_static_and_connected_anywidget_views() -> None:
             slider = page.get_by_role("slider")
             assert slider.get_attribute("aria-valuenow") == "4"
             slider.press("ArrowLeft")
-            page.wait_for_function(
-                "Object.values(window.Bokeh.index).some((view) => "
-                "view.model.document.get_model_by_name('marimo-live-source')?.data.x.length === 3)",
-                timeout=10_000,
-            )
-            assert slider.get_attribute("aria-valuenow") == "3"
+            playwright.expect(slider).to_have_attribute("aria-valuenow", "3", timeout=10_000)
             slider.press("ArrowRight")
             slider.press("ArrowRight")
             slider.press("ArrowRight")
@@ -116,12 +110,7 @@ def test_marimo_renders_static_and_connected_anywidget_views() -> None:
                 ".dataset.bokehAnywidgetMessages ?? 0) > 0",
                 timeout=10_000,
             )
-            page.wait_for_function(
-                "Object.values(window.Bokeh.index).some((view) => "
-                "view.model.document.get_model_by_name('marimo-live-source')?.data.x.length === 6)",
-                timeout=10_000,
-            )
-            assert slider.get_attribute("aria-valuenow") == "6"
+            playwright.expect(slider).to_have_attribute("aria-valuenow", "6", timeout=10_000)
             assert page.locator('[data-bokeh-anywidget-live="connected"]').count() == 1
             browser.close()
     finally:

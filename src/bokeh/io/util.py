@@ -232,32 +232,23 @@ def _resized(obj: Plot, width: int | None, height: int | None) -> Iterator[None]
 # Shared JavaScript snippets for Selenium and Playwright backends
 #-----------------------------------------------------------------------------
 
-# Check whether Bokeh has loaded, created a document, and mounted a root view.
-# A document can become idle just before its root enters ``Bokeh.index``;
-# export geometry is not available until both are present.
+# Check whether every declarative target has published a ready mount handle.
 _BOKEH_LOADED_CHECK = """\
+const targets = [...document.querySelectorAll("[data-bokeh-root]")];
 return typeof Bokeh !== "undefined"
-    && Bokeh.documents != null
-    && Bokeh.documents.length != 0
-    && Bokeh.index != null
-    && Bokeh.index.roots != null
-    && Bokeh.index.roots.length != 0\
+    && targets.length != 0
+    && targets.every((target) => target.bokehMount?.state == "ready")\
 """
 
-# Set a flag once the first Bokeh document becomes idle.
-# Both backends poll/wait on ``window._bokeh_render_complete`` afterwards.
-_WAIT_SCRIPT = """\
-window._bokeh_render_complete = false;
-function done() {
-  window._bokeh_render_complete = true;
-}
-
-const doc = Bokeh.documents[0];
-
-if (doc.is_idle)
-  done();
-else
-  doc.idle.connect(done);
+# Check readiness through each target-owned mount and its document.
+_BOKEH_IDLE_CHECK = """\
+const mounts = new Set(
+  [...document.querySelectorAll("[data-bokeh-root]")]
+    .map((target) => target.bokehMount)
+    .filter((mount) => mount != null),
+);
+return mounts.size != 0
+    && [...mounts].every((mount) => mount.state == "ready" && mount.document.is_idle)\
 """
 
 # Read the bounding box enclosing every root view and the device pixel ratio.
@@ -266,9 +257,14 @@ else
 # whichever root happened to be registered first.
 _ROOT_VIEW_BBOX_SCRIPT = """\
 const output = document.querySelector("[data-bokeh-export-container]");
+const mounts = new Set(
+  [...document.querySelectorAll("[data-bokeh-root]")]
+    .map((target) => target.bokehMount)
+    .filter((mount) => mount != null),
+);
 const rects = output != null
   ? [output.getBoundingClientRect()]
-  : Bokeh.index.roots.map((view) => view.el.getBoundingClientRect());
+  : [...mounts].flatMap((mount) => mount.views.map((view) => view.el.getBoundingClientRect()));
 const left = Math.min(...rects.map((rect) => rect.left));
 const top = Math.min(...rects.map((rect) => rect.top));
 const right = Math.max(...rects.map((rect) => rect.right));
@@ -299,7 +295,12 @@ function* collect_svgs(views) {
   }
 }
 
-return [...collect_svgs(Bokeh.index)]
+const mounts = new Set(
+  [...document.querySelectorAll("[data-bokeh-root]")]
+    .map((target) => target.bokehMount)
+    .filter((mount) => mount != null),
+);
+return [...mounts].flatMap((mount) => [...collect_svgs(mount.view_manager)])
 """
 
 def _SVG_SCRIPT(obj: Model | Document) -> str:
@@ -315,7 +316,12 @@ function* export_svgs(views) {
   }
 }
 
-return [...export_svgs(Bokeh.index)]
+const mounts = new Set(
+  [...document.querySelectorAll("[data-bokeh-root]")]
+    .map((target) => target.bokehMount)
+    .filter((mount) => mount != null),
+);
+return [...mounts].flatMap((mount) => [...export_svgs(mount.views)])
 """
 
 #-----------------------------------------------------------------------------

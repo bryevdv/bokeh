@@ -43,11 +43,11 @@ from ..resources import INLINE
 from ..util.dependencies import import_required
 from .state import curstate
 from .util import (
+    _BOKEH_IDLE_CHECK,
     _BOKEH_LOADED_CHECK,
     _ROOT_VIEW_BBOX_SCRIPT,
     _SVG_SCRIPT,
     _SVGS_SCRIPT,
-    _WAIT_SCRIPT,
     get_layout_html,
     tmp_html,
 )
@@ -276,11 +276,9 @@ def wait_until_render_complete(page: Page, timeout: int) -> None:
     '''Wait for Bokeh to load and render, mirroring the Selenium backend.'''
     timeout_ms = timeout * 1000
 
-    bokeh_loaded_fn = _BOKEH_LOADED_CHECK.replace("return ", "", 1)
-
     try:
         page.wait_for_function(
-            f"() => {{ return {bokeh_loaded_fn}; }}",
+            f"() => {{ {_BOKEH_LOADED_CHECK} }}",
             timeout=timeout_ms,
         )
     except Exception as e:
@@ -291,11 +289,9 @@ def wait_until_render_complete(page: Page, timeout: int) -> None:
             "Bokeh was not loaded in time. Something may have gone wrong.",
         ) from e
 
-    page.evaluate(f"() => {{ {_WAIT_SCRIPT} }}")
-
     try:
         page.wait_for_function(
-            "() => window._bokeh_render_complete",
+            f"() => {{ {_BOKEH_IDLE_CHECK} }}",
             timeout=timeout_ms,
         )
     except Exception:
