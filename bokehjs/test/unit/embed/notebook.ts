@@ -7,7 +7,7 @@ describe("notebook artifact patches", () => {
   it("applies consecutive revisions and ignores stale replay", () => {
     const applied: unknown[] = []
     const document = {
-      apply_json_patch(patch: unknown) {applied.push(patch)},
+      apply_json_patch(patch: unknown) { applied.push(patch) },
     } as unknown as Document
     const receive = create_notebook_patch_receiver(document, 4)
     const content = {events: []}
@@ -33,7 +33,7 @@ describe("notebook artifact patches", () => {
   it("maps DataView slices without retaining unrelated bytes", () => {
     let received: Map<string, ArrayBuffer> | undefined
     const document = {
-      apply_json_patch(_patch: unknown, buffers: Map<string, ArrayBuffer>) {received = buffers},
+      apply_json_patch(_patch: unknown, buffers: Map<string, ArrayBuffer>) { received = buffers },
     } as unknown as Document
     const receive = create_notebook_patch_receiver(document)
     const backing = new Uint8Array([9, 1, 2, 8])
