@@ -74,6 +74,7 @@ def test_html_build_aggregates_artifacts_and_exact_resources_once(tmp_path: Path
     plain = (output / "plain.html").read_text(encoding="utf-8")
     assert html.count("data-bokeh-page-payload-url") == 1
     assert html.count("data-bokeh-page-artifact") == 2
+    assert html.count("data-bokeh-artifact=") == 2
     assert html.count("/bokeh-") >= 1
     assert html.count("bokeh-widgets-") == 1
     assert html.count("bokeh-api-") == 1
@@ -88,6 +89,33 @@ def test_html_build_aggregates_artifacts_and_exact_resources_once(tmp_path: Path
     assert payload["schema"] == "bokeh.embed-page/v1"
     assert len(payload["artifacts"]) == 2
     assert (output / "_static" / "bokeh-plot" / "bokeh-sphinx-bootstrap.js").is_file()
+
+
+def test_html_build_delegates_target_lifecycle_to_the_shared_artifact_runtime(tmp_path: Path) -> None:
+    source, output, doctrees = _project(tmp_path)
+    (source / "index.rst").write_text(
+        "Lifecycle\n=========\n\n.. bokeh-plot::\n   :source-position: none\n\n"
+        "   from bokeh.plotting import figure, show\n   show([figure(), figure()])\n",
+        encoding="utf-8",
+    )
+
+    _build(source, output, doctrees)
+    html = (output / "index.html").read_text(encoding="utf-8")
+    bootstrap = (
+        output / "_static" / "bokeh-plot" / "bokeh-sphinx-bootstrap.js"
+    ).read_text(encoding="utf-8")
+
+    assert html.count('data-bokeh-root="root-0"') == 1
+    assert html.count('data-bokeh-root="root-1"') == 1
+    assert html.index("cdn.bokeh.org/bokeh/") < html.index("data-bokeh-page-artifact")
+    assert html.index("data-bokeh-page-artifact") < html.index("bokeh-sphinx-bootstrap.js")
+    assert "runtime.mount_artifact_declaration(declaration)" in bootstrap
+    assert "runtime.publish_mount_error(target, error)" in bootstrap
+    assert "Bokeh.mount(" not in bootstrap
+    assert ".bokehMount =" not in bootstrap
+    assert ".bokehMounts" not in bootstrap
+    assert ".bokehMounted" not in bootstrap
+    assert "data-bokeh-mounted" not in bootstrap
 
 
 def test_multiple_show_calls_and_multiple_roots_use_logical_keys(tmp_path: Path) -> None:

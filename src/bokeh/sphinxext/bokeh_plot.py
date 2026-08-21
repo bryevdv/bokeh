@@ -342,6 +342,7 @@ def process_artifact_nodes(app: Any, doctree: Any, fromdocname: str) -> None:
             for mount in fragment.mounts:
                 mount_html = mount.html.replace(
                     f'data-bokeh-artifact="{artifact.fingerprint}"',
+                    f'data-bokeh-artifact="{artifact.fingerprint}" '
                     f'data-bokeh-page-artifact="{escape(entry["key"], quote=True)}"',
                 )
                 height = root_heights.get(mount.key)
