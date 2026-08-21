@@ -39,7 +39,6 @@ class Test_State:
         s = bis.State()
         assert isinstance(s.document, Document)
         assert s.file is None
-        assert s.notebook is False
 
     def test_default_file_resources(self) -> None:
         s = bis.State()
@@ -69,33 +68,12 @@ class Test_State:
             "Session output file 'foo.html' already exists, will be overwritten.",
         )
 
-    def test_output_notebook_noarg(self) -> None:
-        s = bis.State()
-        s.output_notebook()
-        assert s.notebook is True
-        assert s.notebook_type == 'jupyter'
-
-    def test_output_notebook_witharg(self) -> None:
-        s = bis.State()
-        s.output_notebook(notebook_type='notjup')
-        assert s.notebook is True
-        assert s.notebook_type == 'notjup'
-
-    def test_output_invalid_notebook(self) -> None:
-        s = bis.State()
-        with pytest.raises(ValueError):
-            s.notebook_type = None
-        with pytest.raises(ValueError):
-            s.notebook_type = 10
-
     def test_reset(self) -> None:
         s = bis.State()
         d = s.document
         s.output_file("foo.html")
-        s.output_notebook()
         s.reset()
         assert s.file is None
-        assert s.notebook is False
         assert isinstance(s.document, Document)
         assert s.document != d
 

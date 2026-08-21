@@ -6,6 +6,7 @@ dependencies:
 
   - conda-build 24*    # pre .conda format
   - libiconv
+  - jupyterlab=4
   - nodejs 24.*
   - python-build
   - setuptools
