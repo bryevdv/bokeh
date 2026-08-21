@@ -3,7 +3,8 @@ import {StandaloneMount, StandaloneRootError} from "../embed/standalone"
 import type {EmbedTarget} from "../embed/dom"
 
 import type {ViewOf} from "core/view"
-import type {ViewManager} from "core/view_manager"
+import type {ViewLookup} from "core/view_manager"
+export type {ViewLookup} from "core/view_manager"
 import {HasProps} from "core/has_props"
 import {dom_ready, contains} from "core/dom"
 import {logger} from "core/logging"
@@ -126,6 +127,121 @@ export type MountOptions = {
   on_error?(error: MountError): void
 }
 
+export type WhenMountedOptions = {
+  signal?: AbortSignal
+}
+
+export const BOKEH_MOUNTED_EVENT = "bokeh:mounted"
+export const BOKEH_MOUNT_ERROR_EVENT = "bokeh:mount-error"
+export const BOKEH_MOUNTED_ATTRIBUTE = "data-bokeh-mounted"
+
+declare global {
+  interface HTMLElement {
+    bokehMount?: BokehMount
+    bokehMountError?: MountError
+  }
+
+  interface DocumentFragment {
+    bokehMount?: BokehMount
+    bokehMountError?: MountError
+  }
+}
+
+function publish_mount(target: EmbedTarget, mounted: BokehMount): void {
+  const changed = target.bokehMount != mounted
+  target.bokehMount = mounted
+  delete target.bokehMountError
+  if (target instanceof HTMLElement) {
+    target.setAttribute(BOKEH_MOUNTED_ATTRIBUTE, "")
+  }
+  if (changed) {
+    target.dispatchEvent(new CustomEvent(BOKEH_MOUNTED_EVENT, {detail: mounted}))
+  }
+}
+
+function clear_mount_error(target: EmbedTarget): void {
+  delete target.bokehMountError
+}
+
+function is_embed_target(target: unknown): target is EmbedTarget {
+  return target instanceof HTMLElement || target instanceof DocumentFragment
+}
+
+/** Publish a structured failure when a bootstrap cannot create a mount handle. */
+export function publish_mount_error(target: EmbedTarget, error: MountError): void {
+  if (target.bokehMount != null) {
+    return
+  }
+  target.bokehMountError = error
+  if (target instanceof HTMLElement) {
+    target.removeAttribute(BOKEH_MOUNTED_ATTRIBUTE)
+  }
+  target.dispatchEvent(new CustomEvent(BOKEH_MOUNT_ERROR_EVENT, {detail: error}))
+}
+
+function unpublish_mount(target: EmbedTarget, mounted: BokehMount, error?: MountError): void {
+  if (target.bokehMount != mounted) {
+    return
+  }
+  delete target.bokehMount
+  delete target.bokehMountError
+  if (target instanceof HTMLElement) {
+    target.removeAttribute(BOKEH_MOUNTED_ATTRIBUTE)
+  }
+  if (error != null) {
+    publish_mount_error(target, error)
+  }
+}
+
+/** Wait for the mount handle published by the bootstrap that owns this target. */
+export function when_mounted(target: EmbedTarget, options: WhenMountedOptions = {}): Promise<BokehMount> {
+  if (target.bokehMount != null) {
+    return Promise.resolve(target.bokehMount)
+  }
+  if (target.bokehMountError != null) {
+    return Promise.reject(target.bokehMountError)
+  }
+
+  const {signal} = options
+  if (signal?.aborted == true) {
+    return Promise.reject(mount_error("abort", signal.reason))
+  }
+
+  return new Promise<BokehMount>((resolve, reject) => {
+    const cleanup = () => {
+      target.removeEventListener(BOKEH_MOUNTED_EVENT, on_mounted)
+      target.removeEventListener(BOKEH_MOUNT_ERROR_EVENT, on_error)
+      signal?.removeEventListener("abort", on_abort)
+    }
+    const on_mounted = () => {
+      const mounted = target.bokehMount
+      if (mounted != null) {
+        cleanup()
+        resolve(mounted)
+      }
+    }
+    const on_error = () => {
+      const error = target.bokehMountError
+      if (error != null && target.bokehMount == null) {
+        cleanup()
+        reject(error)
+      }
+    }
+    const on_abort = () => {
+      cleanup()
+      reject(mount_error("abort", signal?.reason))
+    }
+
+    target.addEventListener(BOKEH_MOUNTED_EVENT, on_mounted)
+    target.addEventListener(BOKEH_MOUNT_ERROR_EVENT, on_error)
+    signal?.addEventListener("abort", on_abort, {once: true})
+
+    // Defend against publication from re-entrant event instrumentation.
+    on_mounted()
+    on_error()
+  })
+}
+
 function keyed_entries<T>(values: ReadonlyMap<string, T> | Readonly<Record<string, T>>): [string, T][] {
   return values instanceof Map ? [...values] : Object.entries(values)
 }
@@ -207,6 +323,7 @@ export class BokehMount<T extends HasProps = HasProps> {
   private _error: MountError | null = null
   private readonly _errors: MountError[] = []
   private readonly _suppressed_roots = new Set<RootKey>()
+  private readonly _published_targets = new Set<EmbedTarget>()
   private readonly _on_abort = () => this._abort(this.signal?.reason)
   private _resolve_disposed!: () => void
 
@@ -220,6 +337,17 @@ export class BokehMount<T extends HasProps = HasProps> {
     private readonly _options: MountOptions,
     script: HTMLScriptElement | SVGScriptElement | null,
   ) {
+    if (is_embed_target(target)) {
+      clear_mount_error(target)
+    }
+    if (_options.targets != null) {
+      for (const [, configured_target] of keyed_entries(_options.targets)) {
+        if (is_embed_target(configured_target)) {
+          clear_mount_error(configured_target)
+        }
+      }
+    }
+
     this.ownership = {document: _source.document_ownership, views: "mount", targets: "caller"}
     this.when_disposed = new Promise<void>((resolve) => this._resolve_disposed = resolve)
     this._mount = new StandaloneMount(
@@ -229,6 +357,11 @@ export class BokehMount<T extends HasProps = HasProps> {
       undefined,
       (error, root_key) => this._record_error(mount_error("render", error, root_key)),
       _source.track_document_roots,
+      () => {
+        if (this._state == "ready") {
+          this._sync_published_targets()
+        }
+      },
     )
 
     const {signal} = _options
@@ -268,6 +401,10 @@ export class BokehMount<T extends HasProps = HasProps> {
     return this._mount.targets
   }
 
+  get view_lookup(): ViewLookup {
+    return this._mount.views
+  }
+
   root(key: RootKey): T | null {
     return this._mount.root(key) as T | null
   }
@@ -278,10 +415,6 @@ export class BokehMount<T extends HasProps = HasProps> {
 
   target(key: RootKey): EmbedTarget | null {
     return this._mount.target(key)
-  }
-
-  get view_manager(): ViewManager {
-    return this._mount.views
   }
 
   get state(): MountState {
@@ -320,6 +453,34 @@ export class BokehMount<T extends HasProps = HasProps> {
     }
   }
 
+  private _publish_target(target: EmbedTarget): void {
+    this._published_targets.add(target)
+    publish_mount(target, this)
+  }
+
+  private _unpublish_target(target: EmbedTarget, error?: MountError): void {
+    this._published_targets.delete(target)
+    unpublish_mount(target, this, error)
+  }
+
+  private _unpublish_all(error?: MountError): void {
+    for (const target of [...this._published_targets]) {
+      this._unpublish_target(target, error)
+    }
+  }
+
+  private _sync_published_targets(): void {
+    const attached = new Set(this._mount.targets.values())
+    for (const target of attached) {
+      this._publish_target(target)
+    }
+    for (const target of [...this._published_targets]) {
+      if (!attached.has(target)) {
+        this._unpublish_target(target)
+      }
+    }
+  }
+
   private async _initialize(target: MountTarget | undefined, script: HTMLScriptElement | SVGScriptElement | null): Promise<void> {
     try {
       this._check_pending()
@@ -353,15 +514,27 @@ export class BokehMount<T extends HasProps = HasProps> {
       for (const key of this._suppressed_roots) {
         targets.delete(key)
       }
+
+      for (const key of this.root_keys) {
+        if (!this._suppressed_roots.has(key)) {
+          const planned_target = targets.get(key) ?? default_target
+          if (planned_target != null) {
+            this._publish_target(planned_target)
+          }
+        }
+      }
+
       await this._mount.initialize(default_target, targets, this._options.use_for_title)
       this._check_pending()
       this._state = "ready"
+      this._sync_published_targets()
     } catch (error) {
       const mounted_error = mount_error("render", error)
       if (this._state != "disposed") {
         this._state = "failed"
         this._record_error(mounted_error)
         this._mount.dispose()
+        this._unpublish_all(mounted_error)
         this._resolve_disposed()
       }
       throw this._error ?? mounted_error
@@ -406,6 +579,7 @@ export class BokehMount<T extends HasProps = HasProps> {
       return
     }
     this._error = new MountError("abort", reason instanceof Error ? reason.message : "Bokeh mount was aborted", reason)
+    this._unpublish_all(this._error)
     void this.dispose()
   }
 
@@ -418,6 +592,7 @@ export class BokehMount<T extends HasProps = HasProps> {
     }
     this.signal?.removeEventListener("abort", this._on_abort)
     this._mount.dispose()
+    this._unpublish_all()
     if (this._state != "failed") {
       this._state = "disposed"
     }
