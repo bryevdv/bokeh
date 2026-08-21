@@ -11,10 +11,13 @@ import {defer} from "@bokehjs/core/util/defer"
 
 describe("in api/plotting module", () => {
   describe("show() function", () => {
-    it("must support specific view types", async () => {
+    it("returns an owning mount with specific view types", async () => {
+      const mounted = show(Plot.create())
+      await mounted.ready
       // tsc will fail with TS2740 if this doesn't produce the correct type
-      const v: PlotView = await show(Plot.create())
-      expect(v).to.be.instanceof(PlotView)
+      const [view]: PlotView[] = mounted.views
+      expect(view).to.be.instanceof(PlotView)
+      await mounted.dispose()
     })
   })
 

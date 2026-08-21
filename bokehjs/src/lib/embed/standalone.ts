@@ -318,6 +318,7 @@ export class StandaloneMount {
   }
 }
 
+/** @internal Legacy positional bridge retained only for notebook rendering. */
 export async function mount_document_standalone(document: Document, element: EmbedTarget,
     options: StandaloneMountOptions = {}): Promise<StandaloneMount> {
   const {roots = [], use_for_title = false, signal, dispose_document = false} = options
@@ -333,10 +334,4 @@ export async function mount_document_standalone(document: Document, element: Emb
   const mount = new StandaloneMount(document, root_map, dispose_document, signal, undefined, true)
   await mount.initialize(element, root_targets, use_for_title)
   return mount
-}
-
-export async function add_document_standalone(document: Document, element: EmbedTarget,
-    roots: (EmbedTarget | null)[] = [], use_for_title: boolean = false): Promise<ViewManager> {
-  const mount = await mount_document_standalone(document, element, {roots, use_for_title})
-  return mount.views
 }
