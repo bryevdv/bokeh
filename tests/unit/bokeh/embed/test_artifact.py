@@ -96,6 +96,13 @@ def test_fingerprint_normalizes_allocation_dependent_retained_model_ids() -> Non
 
     assert first.source != second.source
     assert first.fingerprint == second.fingerprint
+
+
+def test_fingerprint_normalizes_integral_json_numbers() -> None:
+    first = embed(CustomJS(code="return", args={"value": 1.0}))
+    second = embed(CustomJS(code="return", args={"value": 1}))
+
+    assert first.fingerprint == second.fingerprint
     assert first.to_json_string() == first.to_json_string()
 
 
@@ -241,6 +248,23 @@ def test_resource_policies_resolve_none_cdn_inline_and_offline_conflicts() -> No
         ResourcePolicy(mode="offline", base_dir=FIXTURE_PATH.parents[3] / "build").resolve(
             ResourceRequirements(extensions=(external,)),
         )
+
+
+def test_resource_requirement_union_is_exact_and_deterministic() -> None:
+    extension_asset = ResourceAssetRequirement("script", url="https://example.test/ext.js")
+    first = ResourceRequirements(
+        ("bokeh/core", "bokeh/api"),
+        (ExtensionRequirement("shared", (extension_asset,)),),
+    )
+    second = ResourceRequirements(
+        ("bokeh/core", "bokeh/widgets", "bokeh/api"),
+        (ExtensionRequirement("shared", (extension_asset,)),),
+    )
+
+    combined = ResourceRequirements.union(first, second)
+
+    assert combined.components == ("bokeh/core", "bokeh/widgets", "bokeh/api")
+    assert combined.extensions == (ExtensionRequirement("shared", (extension_asset,)),)
 
 
 def test_resource_policy_reports_csp_and_sri_conflicts() -> None:

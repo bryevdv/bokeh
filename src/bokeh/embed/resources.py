@@ -132,6 +132,25 @@ class ResourceRequirements:
     def dynamic_server(cls) -> ResourceRequirements:
         return cls(("bokeh/core", "bokeh/widgets", "bokeh/tables", "bokeh/webgl", "bokeh/mathjax", "bokeh/api"))
 
+    @classmethod
+    def union(cls, *requirements: ResourceRequirements) -> ResourceRequirements:
+        """Return a deterministic exact union of resource requirements."""
+        components = tuple(
+            component for component in _COMPONENT_NAMES
+            if any(component in requirement.components for requirement in requirements)
+        )
+        extensions: dict[str, list[ResourceAssetRequirement]] = {}
+        for requirement in requirements:
+            for extension in requirement.extensions:
+                assets = extensions.setdefault(extension.name, [])
+                for asset in extension.assets:
+                    if asset not in assets:
+                        assets.append(asset)
+        return cls(
+            components,
+            tuple(ExtensionRequirement(name, tuple(assets)) for name, assets in sorted(extensions.items())),
+        )
+
 
 @dataclass(frozen=True)
 class ResolvedResource:
