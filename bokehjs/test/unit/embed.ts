@@ -1,11 +1,11 @@
 import {expect} from "#framework/assertions"
 
 import {mount} from "@bokehjs/api/io"
-import {index} from "@bokehjs/embed/standalone"
+import * as embed from "@bokehjs/embed"
+import * as Bokeh from "@bokehjs/index"
 import {Document} from "@bokehjs/document"
 import {HasProps} from "@bokehjs/core/has_props"
 import {DOMElementView} from "@bokehjs/core/dom_view"
-import {is_equal} from "@bokehjs/core/util/eq"
 import {defer} from "@bokehjs/core/util/defer"
 
 class SomeView extends DOMElementView {
@@ -44,7 +44,7 @@ describe("embed", () => {
     })
   })
 
-  it("should support view index", async () => {
+  it("keeps rendered views scoped to their owning manager", async () => {
     const doc = new Document({roots: [ModelWithView.create()]})
     const mounted = mount(doc, document.body)
     await mounted.ready
@@ -52,18 +52,10 @@ describe("embed", () => {
       const views = [...mounted.view_lookup]
       expect(views.length).to.be.equal(2) // root + notifications
       const [view] = views
-
-      expect(index[view.model.id]).to.be.equal(view)
-
-      // index is a global registry, so we can't simply compare it with views
-      const keys = Object.keys(index)
-      expect(keys.includes(view.model.id)).to.be.true
-
-      const values = Object.values(index)
-      expect(values.includes(view)).to.be.true
-
-      const entries = Object.entries(index)
-      expect(entries.some((entry) => is_equal(entry, [view.model.id, view]))).to.be.true
+      expect(mounted.view_lookup.find_one(view.model)).to.be.equal(view)
+      expect("index" in embed).to.be.false
+      expect("index" in Bokeh).to.be.false
+      expect("documents" in Bokeh).to.be.false
     } finally {
       await mounted.dispose()
     }

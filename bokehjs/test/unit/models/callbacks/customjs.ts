@@ -7,6 +7,7 @@ import {GeneratorFunction, AsyncGeneratorFunction} from "@bokehjs/core/types"
 import {logger} from "@bokehjs/core/logging"
 import {Document} from "@bokehjs/document"
 import {version as js_version} from "@bokehjs/version"
+import {ViewManager} from "@bokehjs/core/view_manager"
 
 describe("CustomJS", () => {
 
@@ -158,6 +159,14 @@ describe("CustomJS", () => {
       })
       const obj = Range1d.create({start: 1, end: 2})
       expect(await cb.execute(obj)).to.be.equal(["foo1", "foo2", "foo3", "foo4", "foo5", "foo6"])
+    })
+
+    it("should provide the current document's mount-scoped view lookup", async () => {
+      const cb = CustomJS.create({code: "return cb_context.index === cb_obj.document.views_manager"})
+      const doc = new Document({roots: [cb]})
+      doc.views_manager = new ViewManager()
+      expect(await cb.execute(cb)).to.be.true
+      doc.destroy()
     })
   })
 })
