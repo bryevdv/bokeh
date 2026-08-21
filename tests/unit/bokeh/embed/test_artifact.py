@@ -7,13 +7,16 @@
 
 from __future__ import annotations
 
+# Standard library imports
 import json
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 
+# External imports
 import pytest
 
+# Bokeh imports
 from bokeh import __version__
 from bokeh.document import Document
 from bokeh.embed import (
