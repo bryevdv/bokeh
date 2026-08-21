@@ -5,12 +5,17 @@ import type {EmbedTarget} from "../embed/dom"
 import type {ViewOf} from "core/view"
 import type {ViewManager} from "core/view_manager"
 import {HasProps} from "core/has_props"
+import type {ModelResolver} from "core/resolvers"
 import {dom_ready, contains} from "core/dom"
 import {logger} from "core/logging"
 import {isArray, isPlainObject, isString} from "core/util/types"
 
 import type {UIElement} from "models/ui/ui_element"
 import type {DOMNode} from "models/dom/dom_node"
+import type {ClientSession} from "../client/session"
+import type {EmbedArtifact, PreparedArtifact} from "../embed/artifact"
+import {ArtifactError, prepare_embed_artifact, validate_embed_artifact} from "../embed/artifact"
+import type {ResourcePolicy} from "../embed/resources"
 
 declare type Jq = any
 declare const $: Jq
@@ -28,6 +33,8 @@ export type MountOwnership = {
   readonly document: DocumentOwnership
   readonly views: "mount"
   readonly targets: "caller"
+  readonly session: "mount" | "none"
+  readonly resources: "shared" | "none"
 }
 
 /** A normalized runtime source for one document and its addressable logical roots. */
@@ -99,9 +106,20 @@ export class MountSource<T extends HasProps = HasProps> {
   }
 }
 
-export type Mountable = MountSource | Document | ShowableRoot | readonly ShowableRoot[] | KeyedRoots<HasProps>
+export type Mountable = MountSource | Document | EmbedArtifact | ShowableRoot | readonly ShowableRoot[] | KeyedRoots<HasProps>
 
-export type MountErrorKind = "source" | "target" | "render" | "abort" | "disposed"
+export type MountErrorKind =
+  | "source"
+  | "target"
+  | "render"
+  | "abort"
+  | "disposed"
+  | "schema"
+  | "decode"
+  | "resource"
+  | "http"
+  | "websocket"
+  | "session"
 
 export class MountError extends Error {
   override readonly name = "BokehMountError"
@@ -123,6 +141,9 @@ export type MountOptions = {
   /** Caller-owned DOM targets addressed by logical root key. Missing or null entries remain detached. */
   targets?: MountTargets
   use_for_title?: boolean
+  /** Artifact resource policy. Direct model/document mounts ignore this option. */
+  resources?: ResourcePolicy
+  resolver?: ModelResolver
   on_error?(error: MountError): void
 }
 
@@ -158,6 +179,8 @@ function mount_error(kind: MountErrorKind, error: unknown, root_key?: RootKey): 
     return error
   } else if (error instanceof StandaloneRootError) {
     return mount_error(kind, error.cause, error.root_key)
+  } else if (error instanceof ArtifactError) {
+    return new MountError(error.kind, error.message, error, root_key)
   }
   const message = error instanceof Error ? error.message : `${error}`
   return new MountError(kind, message, error, root_key)
@@ -210,26 +233,21 @@ export class BokehMount<T extends HasProps = HasProps> {
   private readonly _on_abort = () => this._abort(this.signal?.reason)
   private _resolve_disposed!: () => void
 
-  readonly ownership: MountOwnership
   readonly ready: Promise<void>
   readonly when_disposed: Promise<void>
+  private readonly _artifact: boolean
 
   constructor(
-    private readonly _source: MountSource<T>,
+    source: MountSource<T> | Promise<PreparedArtifact>,
     target: MountTarget | undefined,
     private readonly _options: MountOptions,
     script: HTMLScriptElement | SVGScriptElement | null,
   ) {
-    this.ownership = {document: _source.document_ownership, views: "mount", targets: "caller"}
+    this._artifact = !(source instanceof MountSource)
     this.when_disposed = new Promise<void>((resolve) => this._resolve_disposed = resolve)
-    this._mount = new StandaloneMount(
-      _source.document,
-      new Map(_source.roots),
-      _source.document_ownership == "mount",
-      undefined,
-      (error, root_key) => this._record_error(mount_error("render", error, root_key)),
-      _source.track_document_roots,
-    )
+    if (source instanceof MountSource) {
+      this._set_source(source)
+    }
 
     const {signal} = _options
     if (signal?.aborted == true) {
@@ -238,22 +256,56 @@ export class BokehMount<T extends HasProps = HasProps> {
       signal?.addEventListener("abort", this._on_abort, {once: true})
     }
 
-    this.ready = this._initialize(target, script)
+    this.ready = this._initialize(source, target, script)
     void this.ready.catch(() => {})
   }
 
-  private readonly _mount: StandaloneMount
+  private _source: MountSource<T> | null = null
+  private _mount: StandaloneMount | null = null
+  private _session: ClientSession | null = null
+  private _release: (() => void) | null = null
+
+  get ownership(): MountOwnership {
+    return {
+      document: this._source?.document_ownership ?? "mount",
+      views: "mount",
+      targets: "caller",
+      session: this._session == null ? "none" : "mount",
+      resources: this._artifact ? "shared" : "none",
+    }
+  }
+
+  private _set_source(source: MountSource<T>, prepared?: PreparedArtifact): void {
+    this._source = source
+    this._session = prepared?.session ?? null
+    this._release = prepared?.release ?? null
+    this._mount = new StandaloneMount(
+      source.document,
+      new Map(source.roots),
+      source.document_ownership == "mount",
+      undefined,
+      (error, root_key) => this._record_error(mount_error("render", error, root_key)),
+      source.track_document_roots,
+    )
+  }
 
   get document(): Document {
+    if (this._source == null) {
+      throw new MountError("source", "the Bokeh artifact document is not available before mount readiness")
+    }
     return this._source.document
   }
 
+  get session(): ClientSession | null {
+    return this._session
+  }
+
   get root_keys(): readonly RootKey[] {
-    return this._mount.root_keys
+    return this._mount?.root_keys ?? []
   }
 
   get roots(): ReadonlyMap<RootKey, T> {
-    return this._mount.roots as unknown as ReadonlyMap<RootKey, T>
+    return this._mount == null ? new Map() : this._mount.roots as unknown as ReadonlyMap<RootKey, T>
   }
 
   get models(): readonly T[] {
@@ -265,22 +317,25 @@ export class BokehMount<T extends HasProps = HasProps> {
   }
 
   get targets(): ReadonlyMap<RootKey, EmbedTarget> {
-    return this._mount.targets
+    return this._mount?.targets ?? new Map()
   }
 
   root(key: RootKey): T | null {
-    return this._mount.root(key) as T | null
+    return this._mount?.root(key) as T | null ?? null
   }
 
   view(key: RootKey): ViewOf<T> | null {
-    return this._mount.view(key) as ViewOf<T> | null
+    return this._mount?.view(key) as ViewOf<T> | null ?? null
   }
 
   target(key: RootKey): EmbedTarget | null {
-    return this._mount.target(key)
+    return this._mount?.target(key) ?? null
   }
 
   get view_manager(): ViewManager {
+    if (this._mount == null) {
+      throw new MountError("source", "the Bokeh artifact view manager is not available before mount readiness")
+    }
     return this._mount.views
   }
 
@@ -297,7 +352,7 @@ export class BokehMount<T extends HasProps = HasProps> {
   }
 
   get disposed(): boolean {
-    return this._mount.disposed
+    return this._state == "disposed" || this._state == "failed" || this._mount?.disposed == true
   }
 
   private get signal(): AbortSignal | undefined {
@@ -320,9 +375,29 @@ export class BokehMount<T extends HasProps = HasProps> {
     }
   }
 
-  private async _initialize(target: MountTarget | undefined, script: HTMLScriptElement | SVGScriptElement | null): Promise<void> {
+  private async _initialize(source: MountSource<T> | Promise<PreparedArtifact>, target: MountTarget | undefined,
+      script: HTMLScriptElement | SVGScriptElement | null): Promise<void> {
     try {
       this._check_pending()
+      if (!(source instanceof MountSource)) {
+        const prepared = await source
+        if (this._state == "disposed") {
+          prepared.release()
+          prepared.document.destroy()
+          this._check_pending()
+        }
+        const normalized = new MountSource(
+          prepared.document,
+          prepared.roots,
+          prepared.document_ownership,
+          prepared.track_document_roots,
+        ) as MountSource<T>
+        this._set_source(normalized, prepared)
+      }
+      const mount = this._mount
+      if (mount == null) {
+        throw new MountError("source", "failed to prepare a Bokeh mount source")
+      }
       const configured_targets = this._options.targets
       let default_target: EmbedTarget | null = null
       const targets = new Map<RootKey, EmbedTarget>()
@@ -353,7 +428,7 @@ export class BokehMount<T extends HasProps = HasProps> {
       for (const key of this._suppressed_roots) {
         targets.delete(key)
       }
-      await this._mount.initialize(default_target, targets, this._options.use_for_title)
+      await mount.initialize(default_target, targets, this._options.use_for_title)
       this._check_pending()
       this._state = "ready"
     } catch (error) {
@@ -361,7 +436,9 @@ export class BokehMount<T extends HasProps = HasProps> {
       if (this._state != "disposed") {
         this._state = "failed"
         this._record_error(mounted_error)
-        this._mount.dispose()
+        this._mount?.dispose()
+        this._release?.()
+        this._release = null
         this._resolve_disposed()
       }
       throw this._error ?? mounted_error
@@ -381,7 +458,7 @@ export class BokehMount<T extends HasProps = HasProps> {
     }
 
     try {
-      return await this._mount.attach(key, resolved) as ViewOf<T> | null
+      return await this._mount!.attach(key, resolved) as ViewOf<T> | null
     } catch (error) {
       const mounted_error = mount_error("render", error, key)
       this._record_error(mounted_error)
@@ -394,11 +471,15 @@ export class BokehMount<T extends HasProps = HasProps> {
   }
 
   detach(key: RootKey): void {
+    if (this._state == "pending" && this._mount == null) {
+      this._suppressed_roots.add(key)
+      return
+    }
     if (!this.roots.has(key)) {
       throw new MountError("source", `unknown Bokeh mount root '${key}'`, undefined, key)
     }
     this._suppressed_roots.add(key)
-    this._mount.detach(key)
+    this._mount!.detach(key)
   }
 
   private _abort(reason: unknown): void {
@@ -417,7 +498,9 @@ export class BokehMount<T extends HasProps = HasProps> {
       this._error = new MountError("disposed", "Bokeh mount was disposed before becoming ready")
     }
     this.signal?.removeEventListener("abort", this._on_abort)
-    this._mount.dispose()
+    this._mount?.dispose()
+    this._release?.()
+    this._release = null
     if (this._state != "failed") {
       this._state = "disposed"
     }
@@ -434,14 +517,108 @@ export function mount<T extends ShowableRoot>(source: KeyedRoots<T>, options?: M
 export function mount<T extends ShowableRoot>(source: KeyedRoots<T>, target?: MountTarget, options?: MountOptions): BokehMount<T>
 export function mount(source: MountSource | Document, options?: MountOptions): BokehMount<HasProps>
 export function mount(source: MountSource | Document, target?: MountTarget, options?: MountOptions): BokehMount<HasProps>
+export function mount(source: EmbedArtifact, options?: MountOptions): BokehMount<HasProps>
+export function mount(source: EmbedArtifact, target?: MountTarget, options?: MountOptions): BokehMount<HasProps>
 export function mount(source: Mountable, target_or_options?: MountTarget | MountOptions, options?: MountOptions): BokehMount
 
 export function mount(source: Mountable, target_or_options?: MountTarget | MountOptions, options: MountOptions = {}): BokehMount {
   const script = document.currentScript // This needs to be evaluated before any asynchronous target resolution.
   const target = is_mount_options(target_or_options) ? undefined : target_or_options
   const mount_options = is_mount_options(target_or_options) ? target_or_options : options
-  const normalized = as_mount_source(source)
+  const artifact_like = isPlainObject(source) && typeof (source as {schema?: unknown}).schema == "string" &&
+    (source as {schema: string}).schema.startsWith("bokeh.embed/")
+  const normalized = artifact_like
+    ? prepare_embed_artifact(source, mount_options.resources, mount_options.resolver, mount_options.signal)
+    : as_mount_source(source)
   return new BokehMount(normalized, target, mount_options, script)
+}
+
+export async function mount_artifact_declaration(
+  script: HTMLScriptElement | null = document.currentScript instanceof HTMLScriptElement ? document.currentScript : null,
+  options: MountOptions = {},
+): Promise<BokehMount> {
+  if (script == null) {
+    throw new MountError("source", "an artifact declaration script is required")
+  }
+  const payload_url = script.dataset.bokehPayloadUrl
+  let value: unknown
+  if (payload_url != null) {
+    let response: Response
+    try {
+      response = await fetch(payload_url)
+    } catch (error) {
+      throw new MountError("http", `failed to fetch Bokeh artifact from ${payload_url}: ${error}`, error)
+    }
+    if (!response.ok) {
+      throw new MountError("http", `Bokeh artifact request failed: ${response.status} ${response.statusText}`)
+    }
+    try {
+      value = await response.json()
+    } catch (error) {
+      throw new MountError("decode", `failed to decode Bokeh artifact from ${payload_url}: ${error}`, error)
+    }
+  } else {
+    const payload = script.previousElementSibling
+    if (!(payload instanceof HTMLScriptElement) || payload.dataset.bokehArtifactPayload == null) {
+      throw new MountError("source", "an inline artifact declaration must follow its JSON payload script")
+    }
+    try {
+      value = JSON.parse(payload.textContent)
+    } catch (error) {
+      throw new MountError("decode", `failed to decode inline Bokeh artifact: ${error}`, error)
+    }
+  }
+
+  let artifact: EmbedArtifact
+  try {
+    artifact = validate_embed_artifact(value)
+  } catch (error) {
+    throw mount_error("schema", error)
+  }
+  const candidates = [...document.querySelectorAll<HTMLElement>(
+    "[data-bokeh-artifact][data-bokeh-root]:not([data-bokeh-mounted])",
+  )]
+  const targets = new Map<RootKey, HTMLElement>()
+  for (const root of artifact.roots) {
+    const target = candidates.find((candidate) =>
+      candidate.dataset.bokehArtifact == artifact.fingerprint && candidate.dataset.bokehRoot == root.key)
+    if (target == null) {
+      throw new MountError("target", `missing declaration target for Bokeh artifact root '${root.key}'`, undefined, root.key)
+    }
+    targets.set(root.key, target)
+  }
+  const server_default = artifact.source.kind == "server" && artifact.roots.length == 0
+  const default_target = server_default
+    ? candidates.find((candidate) =>
+      candidate.dataset.bokehArtifact == artifact.fingerprint && candidate.dataset.bokehRoot == "*")
+    : undefined
+  if (server_default && default_target == null) {
+    throw new MountError("target", "missing declaration target for Bokeh server artifact", undefined, "*")
+  }
+  for (const target of targets.values()) {
+    target.dataset.bokehMounted = artifact.fingerprint
+  }
+  if (default_target != null) {
+    default_target.dataset.bokehMounted = artifact.fingerprint
+  }
+
+  const handle = server_default
+    ? mount(artifact, default_target, {resources: "none", ...options})
+    : mount(artifact, {targets, resources: "none", ...options})
+  for (const target of [...targets.values(), ...(default_target == null ? [] : [default_target])]) {
+    const decorated = target as HTMLElement & {bokehMount?: BokehMount}
+    decorated.bokehMount = handle
+  }
+  try {
+    await handle.ready
+  } catch (error) {
+    for (const target of [...targets.values(), ...(default_target == null ? [] : [default_target])]) {
+      delete target.dataset.bokehMounted
+      delete (target as HTMLElement & {bokehMount?: BokehMount}).bokehMount
+    }
+    throw error
+  }
+  return handle
 }
 
 export async function show<T extends UIElement | DOMNode>(obj: T, target?: MountTarget): Promise<ViewOf<T>>
