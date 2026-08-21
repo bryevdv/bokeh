@@ -254,11 +254,26 @@ else
   doc.idle.connect(done);
 """
 
-# Read the bounding box of the first root view and the device pixel ratio.
+# Read the bounding box enclosing every root view and the device pixel ratio.
+# A Document can have several independently mounted roots. Notebook export in
+# particular must preserve that complete output instead of silently cropping to
+# whichever root happened to be registered first.
 _ROOT_VIEW_BBOX_SCRIPT = """\
-const root_view = Bokeh.index.roots[0];
-const {x, y, width, height} = root_view.el.getBoundingClientRect();
-return [x, y, Math.round(width), Math.round(height), window.devicePixelRatio];\
+const output = document.querySelector("[data-bokeh-export-container]");
+const rects = output != null
+  ? [output.getBoundingClientRect()]
+  : Bokeh.index.roots.map((view) => view.el.getBoundingClientRect());
+const left = Math.min(...rects.map((rect) => rect.left));
+const top = Math.min(...rects.map((rect) => rect.top));
+const right = Math.max(...rects.map((rect) => rect.right));
+const bottom = Math.max(...rects.map((rect) => rect.bottom));
+return [
+  Math.floor(left),
+  Math.floor(top),
+  Math.ceil(right) - Math.floor(left),
+  Math.ceil(bottom) - Math.floor(top),
+  window.devicePixelRatio,
+];\
 """
 
 # TODO: consider UIElement like Pane
@@ -282,23 +297,17 @@ return [...collect_svgs(Bokeh.index)]
 """
 
 def _SVG_SCRIPT(obj: Model | Document) -> str:
-    from ..document import Document
-
-    if isinstance(obj, Document):
-        ids = [root.id for root in obj.roots]
-    else:
-        ids = [obj.id]
-    return f"""\
-const ids = new Set({ids})
-function* export_svgs(views) {{
-  for (const view of views) {{
+    del obj
+    # The export page contains only this object's root views. Select those
+    # mounted views directly instead of coupling export to optional model IDs.
+    return """\
+function* export_svgs(views) {
+  for (const view of views) {
     // TODO: use to_blob() API in future
-    if (ids.has(view.model.id)) {{
-        const {{ctx}} = view.export("svg")
-        yield ctx.get_serialized_svg(true)
-    }}
-  }}
-}}
+    const {ctx} = view.export("svg")
+    yield ctx.get_serialized_svg(true)
+  }
+}
 
 return [...export_svgs(Bokeh.index)]
 """
