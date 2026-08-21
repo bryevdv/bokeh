@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+# Standard library imports
 import hashlib
 import json
 from dataclasses import dataclass
@@ -15,6 +16,7 @@ from html import escape
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Mapping
 
+# Bokeh imports
 from ..core.templates import FILE, MACROS, get_env
 from ..document import DEFAULT_TITLE
 from .artifact import EMBED_ARTIFACT_MIME_TYPE, EmbedArtifact
