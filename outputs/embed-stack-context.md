@@ -76,7 +76,7 @@ The installed local Bokeh 4.0 proof-of-concept wheel is distribution metadata an
 /Users/bryan/anaconda3/bin/conda run -n bokeh-embed python -m pytest -o pythonpath=src ...
 ```
 
-The EMBED 02 minimal-ID focused suite passes 129/129 with this command and source precedence. An earlier `dev313` run failed five tests because it imported the editable primary checkout; that result is recorded as wrong-source contamination, not a branch failure.
+The EMBED 03 minimal-ID focused suite passes 129/129 with this command and source precedence. An earlier `dev313` run failed five tests because it imported the editable primary checkout; that result is recorded as wrong-source contamination, not a branch failure.
 
 ## Shared architectural contract
 
@@ -105,14 +105,14 @@ The framework source branch originally established:
 - React, Vue, Angular, and Web Component adapters;
 - multi-root and shared-document behavior.
 
-EMBED 01 resolves the browser boundary as follows:
+EMBED 02 resolves the browser boundary as follows:
 
 - `mount()` returns a `BokehMount` synchronously so callers can dispose or abort
   work immediately; `handle.ready` covers source normalization, target
   resolution, construction, and readiness of every initially selected view.
 - `MountSource` is the normalized runtime seam: one document, keyed logical
   roots, and explicit caller/mount document ownership. It is not a second wire
-  schema. EMBED 03's artifact decoder and server source constructor must produce
+  schema. EMBED 04's artifact decoder and server source constructor must produce
   this normalized input and extend the same readiness pipeline with resources,
   decoding, and sessions.
 - Missing or `null` keyed targets leave roots detached. `attach(key, target)`
@@ -121,7 +121,7 @@ EMBED 01 resolves the browser boundary as follows:
   handle and shared document remain live.
 - The handle owns views and listeners; the caller owns targets. Bare roots use
   a mount-owned temporary document, while a supplied document remains
-  caller-owned. Session and loaded-resource ownership are reserved for EMBED 03
+  caller-owned. Session and loaded-resource ownership are reserved for EMBED 04
   and must be exposed through this same handle rather than a parallel lifecycle.
 - `dispose()` is idempotent and awaitable. Early disposal, abort, target errors,
   and render errors roll back mount-owned views, global-index registrations,
@@ -143,7 +143,7 @@ When replayed above the lifecycle branch:
 - keep `Document.to_json()` canonical and ID-full unless the caller explicitly compiles a static artifact;
 - use `Document.to_static_json()` as the explicit low-level compiler seam in Python and BokehJS; it applies graph-minimal IDs and accepts additional externally referenced models without changing canonical serialization;
 - treat artifact roots as externally addressable by logical key plus document/root ordinal, so a root ID is not required merely for mounting;
-- have the artifact decoder resolve those ordinals to models and construct EMBED 01's keyed `MountSource`; neither the fixture nor the runtime seam depends on `RenderItem` or DOM/model ID coupling;
+- have the artifact decoder resolve those ordinals to models and construct EMBED 02's keyed `MountSource`; neither the fixture nor the runtime seam depends on `RenderItem` or DOM/model ID coupling;
 - retain IDs for shared/cyclic models and for every externally referenced patch, comm, or server boundary;
 - retain both lifecycle and minimal-ID tests in overlapping `has_props.ts` and document test files;
 - add contract fixtures proving Python serialization and BokehJS deserialization agree for anonymous, shared, cyclic, rooted, and live-protocol graphs.
@@ -182,7 +182,7 @@ The newest review of `poc/jupyter-integration-4.0` found it promising but not me
 
 The review validation baseline was 151 Python tests passing and `npm run check:protocol` passing with no review edits. This is a baseline, not proof that the blockers above are fixed.
 
-EMBED 05 resolution (2026-08-20):
+EMBED 06 resolution (2026-08-20):
 
 | Review item | Resolution and evidence |
 |---|---|
@@ -209,13 +209,13 @@ remains environment-limited and is not claimed.
 ```text
 branch-4.0
 └── codex/embed-00-contract
-    └── codex/embed-00a-model-factories
-        └── codex/embed-01-mount-frameworks
-            └── codex/embed-02-minimal-ids
-                └── codex/embed-03-artifact-runtime
-                    └── codex/embed-04-sphinx
-                        └── codex/embed-05-jupyter
-                            └── codex/embed-06-panel
+    └── codex/embed-01-model-factories
+        └── codex/embed-02-mount-frameworks
+            └── codex/embed-03-minimal-ids
+                └── codex/embed-04-artifact-runtime
+                    └── codex/embed-05-sphinx
+                        └── codex/embed-06-jupyter
+                            └── codex/embed-07-panel
 ```
 
 ### EMBED 00 — Contract and stack coordination
@@ -229,7 +229,7 @@ Acceptance:
 - ownership, readiness, disposal, target replacement, and error propagation are normative;
 - each later task records decisions that affect another layer back into this contract.
 
-### EMBED 00A — Lifecycle-aware model factories
+### EMBED 01 — Lifecycle-aware model factories
 
 Factor the BokehJS construction prerequisite out of the framework branch. This
 layer owns `HasProps.create()`, lifecycle-aware deferred construction and
@@ -246,9 +246,9 @@ Acceptance:
   preserve exact-once cleanup on failure;
 - direct constructor enforcement covers library, examples, fixtures, and tests;
 - BokehJS build, focused lifecycle/construction tests, and lint pass before
-  EMBED 01 is replayed.
+  EMBED 02 is replayed.
 
-### EMBED 01 — Mount lifecycle and framework adapters
+### EMBED 02 — Mount lifecycle and framework adapters
 
 Replay and preserve the framework source branch, then align it with the common mount contract. Framework packages remain thin adapters over core BokehJS lifecycle APIs.
 
@@ -259,7 +259,7 @@ Acceptance:
 - resource scripts are host-owned or resolved by the common loader, never injected independently by each framework;
 - disposal and deserialization rollback are leak-tested.
 
-### EMBED 02 — Minimal model IDs
+### EMBED 03 — Minimal model IDs
 
 Replay and preserve the minimal-ID source branch above the lifecycle work, resolve semantic overlaps, and expose an explicit static-artifact serialization policy.
 
@@ -271,7 +271,7 @@ Acceptance:
 - lifecycle-aware model construction and rollback remain intact;
 - size and determinism measurements are recorded for representative documents.
 
-### EMBED 03 — Artifact and resource runtime
+### EMBED 04 — Artifact and resource runtime
 
 Implement the versioned Python/JavaScript `EmbedArtifact`, compiler, renderers, resource requirements/policy resolver, promise-based loader, server-source representation, useful thin facades, and explicit 4.0 migration diagnostics. Extend the lifecycle branch's `mount()` instead of introducing another browser entry point.
 
@@ -283,7 +283,7 @@ Acceptance:
 - `file_html()` and `components()` delegate first; `JsonItem`, `RenderItem`, autoload, and wrapping-flag use cases move to the artifact APIs without constraining the new return shapes;
 - cross-language schema fixtures plus retained-facade and 4.0 migration matrices run in CI.
 
-Implemented EMBED 03 decisions that later layers must preserve:
+Implemented EMBED 04 decisions that later layers must preserve:
 
 - v1 standalone artifacts normalize to one compiler document and structurally
   address roots by logical key plus document/root ordinal; server roots retain
@@ -304,10 +304,10 @@ Implemented EMBED 03 decisions that later layers must preserve:
   offline output rejects every external requirement.
 
 Detailed API and migration recipes are in
-`outputs/embed-03-artifact-runtime.md`; determinism results are in
-`outputs/embed-03-artifact-measurements.md`.
+`outputs/embed-04-artifact-runtime.md`; determinism results are in
+`outputs/embed-04-artifact-measurements.md`.
 
-### EMBED 04 — Sphinx and `bokeh-plot`
+### EMBED 05 — Sphinx and `bokeh-plot`
 
 Make documentation builds a first-class static artifact consumer. Replace per-directive autoload programs and global monkeypatching with explicit output capture, artifact nodes, per-page aggregation, and exact resources.
 
@@ -322,7 +322,7 @@ Acceptance:
 - HTML and non-HTML builders have tested output/fallback behavior;
 - full docs build and browser tests include the existing high-plot-count pages and enforce size/request budgets.
 
-Implemented EMBED 04 decisions that later layers must preserve:
+Implemented EMBED 05 decisions that later layers must preserve:
 
 - documentation output capture is a context-local seam in `bokeh.io`; without
   an active capture, `show()`, `save()`, `output_file()`, and
@@ -336,11 +336,11 @@ Implemented EMBED 04 decisions that later layers must preserve:
   plus document/root ordinals and never use DOM or model IDs for targeting;
 - a page resolves the exact `ResourceRequirements.union()` through one
   explicit project policy. `cdn`, `inline`, `offline`, copied `static`,
-  relative/absolute/server, CSP, and host-owned delivery all use EMBED 03's
+  relative/absolute/server, CSP, and host-owned delivery all use EMBED 04's
   resolver and typed resource renderer;
 - the page bootstrap calls `Bokeh.mount()` and retains the returned
   `BokehMount`; it does not own a parallel decoder, resource registry, or view
-  lifecycle. EMBED 05 and 06 must continue to use the common mount contract;
+  lifecycle. EMBED 06 and 07 must continue to use the common mount contract;
 - source/options/schema/version/callback-policy fingerprints key the directive
   cache and payload name. External sources are Sphinx dependencies; doctree
   purge/merge and atomic cache writes make incremental and parallel builds
@@ -352,16 +352,16 @@ Implemented EMBED 04 decisions that later layers must preserve:
   server embed outside `bokeh-plot`;
 - cross-runtime fingerprint parity treats integral JSON numbers identically,
   and the BokehJS artifact decoder pre-registers ID-bearing objects before
-  decoding forward references. These are shared EMBED 03 contract fixes, not
+  decoding forward references. These are shared EMBED 04 contract fixes, not
   Sphinx-only exceptions;
 - Node development builds provide a CommonJS compiler entry point alongside
   the packaged `compiler.js`, allowing custom-extension docs to build under
   the project's Node 24 ESM package scope.
 
 Full-build, incremental, browser, request, and size evidence is recorded in
-`outputs/embed-04-sphinx-measurements.md`.
+`outputs/embed-05-sphinx-measurements.md`.
 
-### EMBED 05 — Jupyter and notebook hosts
+### EMBED 06 — Jupyter and notebook hosts
 
 Replay and preserve the Jupyter proof of concept above the common runtime, then refactor it into host adapters and address every latest-review blocker.
 
@@ -375,9 +375,9 @@ Acceptance:
 - export links are safe and portable, concurrent exports are correlation-safe, and Playwright is the only browser automation layer;
 - the detailed review test matrix above passes.
 
-### EMBED 06 — Panel downstream impact and patch proposal
+### EMBED 07 — Panel downstream impact and patch proposal
 
-Run last, after EMBED 00A–05 are complete. Evaluate Panel against the finished Bokeh 4.0 artifact/resource/mount/lifecycle design and propose the necessary downstream patch. Panel consumes the contract; it does not establish a parallel embedding architecture or force preservation of removed Bokeh internals.
+Run last, after EMBED 01–06 are complete. Evaluate Panel against the finished Bokeh 4.0 artifact/resource/mount/lifecycle design and propose the necessary downstream patch. Panel consumes the contract; it does not establish a parallel embedding architecture or force preservation of removed Bokeh internals.
 
 Acceptance:
 
@@ -422,5 +422,5 @@ No old task should be removed until this audit passes.
 5. Run `git diff --check` on every branch range.
 6. Run branch-local focused tests through `bokeh-embed`: lifecycle/framework tests on 01; those plus minimal serialization/deserialization tests on 02; artifact schema, loader, retained-facade/migration, and cross-language tests on 03; Sphinx unit/full-build/browser budgets on 04; the complete notebook matrix plus framework/mount smoke tests on 05. Before Python tests, verify the imported Bokeh path and use `python -m pytest -o pythonpath=src ...`.
 7. Confirm each task's worktree starts from its named branch and no task silently forks from the repository default branch.
-8. After every EMBED 00 contract commit, restack 00A through the current top branch sequentially and repeat adjacent-ancestry and `git diff --check` verification.
+8. After every EMBED 00 contract commit, restack EMBED 01 through the current top branch sequentially and repeat adjacent-ancestry and `git diff --check` verification.
 9. Keep source branches and old tasks until range-diffs, test results, unresolved known blockers, and task/branch/worktree mappings are recorded in `outputs/embed-stack-verification.md`.

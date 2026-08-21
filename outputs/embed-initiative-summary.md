@@ -63,13 +63,13 @@ for third-party notebook hosts, and a public owning loop/scheduler on
 
 ```text
 EMBED 00  Contract, fixtures, coordination, and verification
-EMBED 00A Lifecycle-aware BokehJS model factories and rollback
-EMBED 01  BokehJS mount lifecycle and framework adapters
-EMBED 02  Minimal IDs integrated with lifecycle-safe construction
-EMBED 03  Artifact compiler, renderers, resource resolver/loader, retained facades and migration errors
-EMBED 04  Sphinx and bokeh-plot page aggregation
-EMBED 05  Jupyter and notebook host adapters
-EMBED 06  Panel downstream impact assessment and patch proposal
+EMBED 01 Lifecycle-aware BokehJS model factories and rollback
+EMBED 02  BokehJS mount lifecycle and framework adapters
+EMBED 03  Minimal IDs integrated with lifecycle-safe construction
+EMBED 04  Artifact compiler, renderers, resource resolver/loader, retained facades and migration errors
+EMBED 05  Sphinx and bokeh-plot page aggregation
+EMBED 06  Jupyter and notebook host adapters
+EMBED 07  Panel downstream impact assessment and patch proposal
 ```
 
 The branches are intentionally stackable in that order. Lifecycle-aware model construction is a factored prerequisite for framework mounting, which precedes minimal-ID conflict resolution; all three precede the artifact/runtime that consumes them. Sphinx is the first production static consumer. Jupyter validates the most demanding live-host cases. Panel runs last as a downstream compatibility audit against the completed design.

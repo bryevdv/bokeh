@@ -411,12 +411,12 @@ Server artifacts/options need to cover all existing behavior:
 
 The server knows the initial session document and can report its exact initial requirements. Because a server application can add new model types later, the runtime also needs an additive resource mechanism. In the short term, server policy may conservatively include standard dynamic bundles while standalone/docs artifacts are exact. In the target state, protocol messages that introduce a not-yet-registered model should be preceded by or carry a resource requirement update.
 
-### EMBED 03 implementation record
+### EMBED 04 implementation record
 
 The initial implementation resolves several choices left open above:
 
 - standalone inputs are normalized into exactly one compiler document and use
-  EMBED 02's graph-minimal `Document.to_static_json()` seam; independent
+  EMBED 03's graph-minimal `Document.to_static_json()` seam; independent
   documents become independent artifacts;
 - every rendered artifact requires `bokeh/api` because the established
   `Bokeh.mount()`/`BokehMount` lifecycle lives in that bundle; core artifact
@@ -438,8 +438,8 @@ The initial implementation resolves several choices left open above:
   decoder.
 
 The complete 4.0 recipes, schema notes, and downstream propagation decisions
-are recorded in `outputs/embed-03-artifact-runtime.md`; deterministic payload
-and bundle results are in `outputs/embed-03-artifact-measurements.md`.
+are recorded in `outputs/embed-04-artifact-runtime.md`; deterministic payload
+and bundle results are in `outputs/embed-04-artifact-measurements.md`.
 
 ## Sphinx and documentation builds as a primary design case
 
@@ -515,7 +515,7 @@ The real `show()`, `save()`, `output_file()`, and `output_notebook()` functions 
 
 This output-capture facility is also useful for gallery builders and downstream documentation systems.
 
-### EMBED 04 implementation evidence
+### EMBED 05 implementation evidence
 
 The completed Sphinx consumer follows this design without introducing another
 embedding stack. Directives compile `EmbedArtifact` values through `embed()`;
@@ -532,7 +532,7 @@ The highest-density generated page mounted all 42 roots with four exact bundles,
 one payload, one bootstrap, and no browser console errors. Core/plot, tables,
 WebGL, MathJax, and compiled custom-extension pages also passed full-output
 browser smoke tests. Detailed bytes, requests, hashes, and focused validation
-totals are in `outputs/embed-04-sphinx-measurements.md`.
+totals are in `outputs/embed-05-sphinx-measurements.md`.
 
 ## Proposed public API and 4.0 migration mapping
 
