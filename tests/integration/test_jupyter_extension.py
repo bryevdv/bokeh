@@ -19,7 +19,12 @@ from nbclient import NotebookClient
 # Bokeh imports
 import bokeh
 from bokeh.embed import embed
-from bokeh.io.jupyter import DISPLAY_MIME_TYPE, PROTOCOL_VERSION, RESOURCES_MIME_TYPE, display_payload
+from bokeh.io.jupyter import (
+    DISPLAY_MIME_TYPE,
+    PROTOCOL_VERSION,
+    RESOURCES_MIME_TYPE,
+    display_payload,
+)
 from bokeh.io.jupyter_export import BokehPngPreprocessor
 from bokeh.plotting import figure
 from tests.support.util.env import envset
