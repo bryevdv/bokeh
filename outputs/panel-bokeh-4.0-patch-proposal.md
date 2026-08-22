@@ -9,6 +9,8 @@ Bokeh architecture parent:
 
 Patch artifact: `outputs/panel-bokeh-4.0.patch`.
 
+SHA-256: `e6a8e70fb31fc21e22801c66895a0a97b37f3aca77d6bccd0bfb247ec79122fd`.
+
 Status: applicable local downstream draft for a breaking Panel 2/Bokeh 4-only
 line. It is not published, not applied to a user Panel checkout, and not part of
 a public Bokeh pull request.
@@ -233,6 +235,8 @@ installed editable.
 
 - independent clean Panel snapshot at the exact SHA;
 - `git apply --check`: passed; apply: passed; `git diff --check`: passed;
+- 136 unified-diff separator lines containing only the context-prefix space
+  were normalized to empty lines; no meaningful indentation or content changed;
 - imported Bokeh:
   `/Users/bryan/work/trees/e94b/bokeh-embed/src/bokeh/__init__.py`,
   `4.0.0.dev1+42.ga6485cdf`;

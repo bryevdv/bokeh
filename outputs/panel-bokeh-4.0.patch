@@ -4,13 +4,13 @@ index 7fd4b23e98a1f5fec77155caea538b82f5d54740..c76a5b4e725dea1fc2e04a19d3a0475d
 +++ b/panel/_param.py
 @@ -6,7 +6,7 @@ from bokeh.core.enums import enumeration
  from param import Parameter, _is_number
- 
+
  AlignmentType = t.Literal["auto", "start", "center", "end"]
 -Alignment = enumeration(AlignmentType)
 +Alignment = enumeration(*t.get_args(AlignmentType))
  MarginType: t.TypeAlias = int | tuple[int, int] | tuple[int, int, int, int]
- 
- 
+
+
 diff --git a/panel/_templates/doc_nb_js.js b/panel/_templates/doc_nb_js.js
 index d138c5b02e16117afc8e54b1b1f9e52e6b6a7f36..66db4eb9401f061da1dff7eeafc0f55314a3ad5f 100644
 --- a/panel/_templates/doc_nb_js.js
@@ -89,7 +89,7 @@ index f8774bb129b62c9d4baa7ee0a5a9cde7e22a228f..840078e45d15668eda8e07c96c810928
 @@ -69,8 +69,11 @@ pyodideWorker.onmessage = async (event) => {
      render_items[0]['roots'] = roots
      render_items[0]['root_ids'] = root_ids
- 
+
 -    // Clear pre-rendered contents
 -    Bokeh.index.roots.map((v) => v.remove())
 +    // Clear the previously owned render before replacing it.
@@ -97,7 +97,7 @@ index f8774bb129b62c9d4baa7ee0a5a9cde7e22a228f..840078e45d15668eda8e07c96c810928
 +      await pyodideWorker.bokehMount.dispose()
 +      pyodideWorker.bokehMount = null
 +    }
- 
+
      // Embed content
      const [views] = await Bokeh.embed.embed_items(docs_json, render_items)
 diff --git a/panel/io/artifact.py b/panel/io/artifact.py
@@ -264,13 +264,13 @@ index a87b5888cf403f1b5fc5948744a31a8db9259d60..8198f192a4b89dca77ee67cbb08d0a09
  import pathlib
  import typing as t
  import uuid
- 
+
 -from html import escape
  from urllib.parse import urlparse
  from zipfile import ZipFile
- 
+
  import bokeh
- 
+
 -from bokeh.application.handlers.code import CodeHandler
 -from bokeh.core.json_encoder import serialize_json
 -from bokeh.core.templates import FILE, MACROS, get_env
@@ -281,7 +281,7 @@ index a87b5888cf403f1b5fc5948744a31a8db9259d60..8198f192a4b89dca77ee67cbb08d0a09
 -from bokeh.util.serialization import make_id
 +from bokeh.core.templates import FILE
  from packaging.requirements import Requirement
- 
+
  from .. import __version__, config
  from ..util import base_version
 -from .application import Application, build_single_handler_application
@@ -297,13 +297,13 @@ index a87b5888cf403f1b5fc5948744a31a8db9259d60..8198f192a4b89dca77ee67cbb08d0a09
  )
 -from .state import set_curdoc, state
 +from .state import state
- 
+
  if t.TYPE_CHECKING:
      from collections.abc import Sequence
 @@ -79,6 +68,14 @@ PWA_IMAGES = [
- 
+
  Runtimes = t.Literal['pyodide', 'pyscript', 'pyodide-worker', 'pyscript-worker']
- 
+
 +
 +def _require_supported_embedding_runtime() -> t.NoReturn:
 +    raise RuntimeError(
@@ -314,7 +314,7 @@ index a87b5888cf403f1b5fc5948744a31a8db9259d60..8198f192a4b89dca77ee67cbb08d0a09
 +
  PRE = """
  import asyncio
- 
+
 @@ -351,146 +348,7 @@ def script_to_html(
      compiled: bool
          Whether to use pre-compiled pyodide bundles.
@@ -460,8 +460,8 @@ index a87b5888cf403f1b5fc5948744a31a8db9259d60..8198f192a4b89dca77ee67cbb08d0a09
 -        )
 -    return html, web_worker
 +    _require_supported_embedding_runtime()
- 
- 
+
+
  def convert_app(
 @@ -508,6 +366,7 @@ def convert_app(
      compiled: bool = False,
@@ -485,7 +485,7 @@ index 83d5edbcc0d18b336f21039a822a7fee6a6d2611..9fd6f06dad6cf161514596f9794e62d7
 +++ b/panel/io/embed.py
 @@ -24,14 +24,6 @@ from .state import state
  #---------------------------------------------------------------------
- 
+
  STATE_JS = """
 -var state = null
 -for (var root of cb_obj.document.roots()) {{
@@ -497,11 +497,11 @@ index 83d5edbcc0d18b336f21039a822a7fee6a6d2611..9fd6f06dad6cf161514596f9794e62d7
 -if (!state) {{ return; }}
  state.set_state(cb_obj, {js_getter})
  """
- 
+
 @@ -292,8 +284,9 @@ def embed_state(panel, model, doc, max_states=1000, max_opts=3,
              merged[widget.label][1].append(w_model)
              continue
- 
+
 -        js_callback = CustomJS(code=STATE_JS.format(
 -            id=state_model.ref['id'], js_getter=js_getter))
 +        js_callback = CustomJS(
@@ -509,20 +509,20 @@ index 83d5edbcc0d18b336f21039a822a7fee6a6d2611..9fd6f06dad6cf161514596f9794e62d7
 +        )
          widget_data.append(([w], [w_model], vals, getter, js_callback, on_change))
          merged[widget.label] = widget_data[-1]
- 
+
 diff --git a/panel/io/notebook.py b/panel/io/notebook.py
 index 7c897e9ebb5e1a3c787acbe6c637169c6ed6b877..f5c6cbb76fa619ba517fbe81226e093ec3fd5d0c 100644
 --- a/panel/io/notebook.py
 +++ b/panel/io/notebook.py
 @@ -13,23 +13,16 @@ import warnings
- 
+
  from contextlib import contextmanager
  from functools import partial
 -from html import escape
- 
+
  import bokeh
 -import bokeh.embed.notebook
- 
+
 -from bokeh.core.json_encoder import serialize_json
 -from bokeh.core.templates import MACROS
  from bokeh.document import Document
@@ -541,7 +541,7 @@ index 7c897e9ebb5e1a3c787acbe6c637169c6ed6b877..f5c6cbb76fa619ba517fbe81226e093e
  )
 @@ -39,6 +32,7 @@ from pyviz_comms import (
  )
- 
+
  from ..util import _descendents
 +from .artifact import render_artifact_page
  from .embed import embed_state
@@ -550,7 +550,7 @@ index 7c897e9ebb5e1a3c787acbe6c637169c6ed6b877..f5c6cbb76fa619ba517fbe81226e093e
 @@ -140,49 +134,17 @@ def _autoload_js(
          version = bokeh.__version__
      )
- 
+
 -def html_for_render_items(docs_json, render_items, template=None, template_variables={}):
 -    json_id = make_id()
 -    json = escape(serialize_json(docs_json), quote=False)
@@ -603,11 +603,11 @@ index 7c897e9ebb5e1a3c787acbe6c637169c6ed6b877..f5c6cbb76fa619ba517fbe81226e093e
 +        base_template=NB_TEMPLATE_BASE,
      )
      return ({'text/html': html, EXEC_MIME: ''}, {EXEC_MIME: {'id': ref}})
- 
+
 @@ -202,9 +164,8 @@ def render_model(
          if model.document:
              model.document._template_variables['dist_url'] = dist_url
- 
+
 -    (docs_json, [render_item]) = standalone_docs_json_and_render_items([model], suppress_callback_warning=True)
 -    div = div_for_render_item(render_item)
 -    render_json = render_item.to_json()
@@ -615,10 +615,10 @@ index 7c897e9ebb5e1a3c787acbe6c637169c6ed6b877..f5c6cbb76fa619ba517fbe81226e093e
 +    [mount] = fragment.mounts
      requirements = [pnext._globals[ext] for ext in pnext._loaded_extensions
                      if ext in pnext._globals]
- 
+
 @@ -213,15 +174,15 @@ def render_model(
          ipywidget &= "PANEL_IPYWIDGET" in os.environ
- 
+
      script = DOC_NB_JS.render(
 -        docs_json=serialize_json(docs_json),
 -        render_items=serialize_json([render_json]),
@@ -631,12 +631,12 @@ index 7c897e9ebb5e1a3c787acbe6c637169c6ed6b877..f5c6cbb76fa619ba517fbe81226e093e
 -    bokeh_script, bokeh_div = script, div
 -    html = f"<div id='{target}'>{bokeh_div}</div>"
 +    html = f"<div id='{target}'>{mount.html}</div>"
- 
+
 -    data = {'text/html': html, 'application/javascript': bokeh_script}
 +    data = {'text/html': html, 'application/javascript': script}
      return ({'text/html': mimebundle_to_html(data), EXEC_MIME: ''},
              {EXEC_MIME: {'id': target}})
- 
+
 diff --git a/panel/io/pyodide.py b/panel/io/pyodide.py
 index ba39ac7781832ada471024fca7547bffa5d4a75a..4f3df88d60a2701794adf2658b5684b807a511dc 100644
 --- a/panel/io/pyodide.py
@@ -644,7 +644,7 @@ index ba39ac7781832ada471024fca7547bffa5d4a75a..4f3df88d60a2701794adf2658b5684b8
 @@ -91,6 +91,14 @@ except Exception:
  DEBOUNCE = 50
  TIMEOUT = 500
- 
+
 +
 +def _require_supported_embedding_runtime() -> None:
 +    raise RuntimeError(
@@ -675,7 +675,7 @@ index ba39ac7781832ada471024fca7547bffa5d4a75a..4f3df88d60a2701794adf2658b5684b8
 @@ -427,7 +437,7 @@ def _link_docs_worker(doc: Document, dispatch_fn: t.Any, msg_id: str | None = No
      doc.on_event('document_ready', functools.partial(state._schedule_on_load, doc))
      doc.callbacks.trigger_event(DocumentReady())
- 
+
 -async def _link_model(ref: str, doc: Document) -> None:
 +async def _link_model(ref: str, doc: Document, target: str) -> None:
      """
@@ -705,7 +705,7 @@ index ba39ac7781832ada471024fca7547bffa5d4a75a..4f3df88d60a2701794adf2658b5684b8
 +    if view is None:
 +        raise RuntimeError(f"Bokeh mount does not contain a view for model {ref!r}")
 +    _link_docs(doc, mount.document)
- 
+
  def _get_pyscript_target():
      if '__main__' in sys.modules and hasattr(sys.modules['__main__'], 'get_current_display_target'):
 @@ -482,6 +495,7 @@ def render_script(obj: t.Any, target: ID) -> str:
@@ -714,7 +714,7 @@ index ba39ac7781832ada471024fca7547bffa5d4a75a..4f3df88d60a2701794adf2658b5684b8
      """
 +    _require_supported_embedding_runtime()
      from js import document
- 
+
      from ..pane import panel as as_panel
 @@ -495,7 +509,7 @@ def render_script(obj: t.Any, target: ID) -> str:
          render_item.roots._roots[root] = target
@@ -730,7 +730,7 @@ index 29ec21b7594979d891259f83139f2138d8e34ea2..61edb5db473f76b36600f2a4037cfc3f
 --- a/panel/io/resources.py
 +++ b/panel/io/resources.py
 @@ -488,6 +488,8 @@ def bundle_resources(
- 
+
      if js_resources:
          js_resources = js_resources.clone()
 +        if "bokeh-api" not in js_resources.components:
@@ -744,7 +744,7 @@ index fcce082a3b3ce63535c77214ccc66ff944a480d5..a87130f522d6b09429bebd5dac19f57c
 +++ b/panel/io/save.py
 @@ -9,10 +9,8 @@ import typing as t
  import bokeh
- 
+
  from bokeh.document.document import Document
 -from bokeh.embed.elements import html_page_for_render_items
 -from bokeh.embed.util import (
@@ -757,7 +757,7 @@ index fcce082a3b3ce63535c77214ccc66ff944a480d5..a87130f522d6b09429bebd5dac19f57c
  from bokeh.models import UIElement
 @@ -20,6 +18,8 @@ from bokeh.resources import CDN, INLINE, Resources as BkResources
  from pyviz_comms import Comm
- 
+
  from ..config import config
 +from ..models.state import State
 +from .artifact import render_artifact_page
@@ -767,7 +767,7 @@ index fcce082a3b3ce63535c77214ccc66ff944a480d5..a87130f522d6b09429bebd5dac19f57c
 @@ -40,27 +40,6 @@ if t.TYPE_CHECKING:
      from ..viewable import Viewable
      from .resources import MODES
- 
+
 -#---------------------------------------------------------------------
 -# Private API
 -#---------------------------------------------------------------------
@@ -795,10 +795,10 @@ index fcce082a3b3ce63535c77214ccc66ff944a480d5..a87130f522d6b09429bebd5dac19f57c
 @@ -163,18 +142,29 @@ def file_html(
      else:
          models_seq = models
- 
+
 +    template_variables = dict(template_variables)
      template_variables['dist_url'] = CDN_DIST
- 
+
 -    with OutputDocumentFor(models_seq, apply_theme=theme, always_new=_always_new):
 -        (docs_json, render_items) = standalone_docs_json_and_render_items(
 -            models_seq, suppress_callback_warning=True
@@ -828,7 +828,7 @@ index fcce082a3b3ce63535c77214ccc66ff944a480d5..a87130f522d6b09429bebd5dac19f57c
 +        artifact, keyed_models, bundle, title=title, template=template,
 +        template_variables=template_variables
 +    )
- 
+
  #---------------------------------------------------------------------
  # Public API
 diff --git a/panel/io/server.py b/panel/io/server.py
@@ -837,14 +837,14 @@ index 5a90d3f0d796a2e4bce3f977258f3ecc0e67d91a..cc3768a487caee9e6b76697e60c1d477
 +++ b/panel/io/server.py
 @@ -19,7 +19,6 @@ import typing as t
  import uuid
- 
+
  from functools import partial, wraps
 -from html import escape
  from urllib.parse import urlparse
- 
+
  import bokeh
 @@ -28,27 +27,27 @@ import tornado
- 
+
  # Bokeh imports
  from bokeh.core.json_encoder import serialize_json
 -from bokeh.core.templates import AUTOLOAD_JS, FILE, MACROS
@@ -895,11 +895,11 @@ index 5a90d3f0d796a2e4bce3f977258f3ecc0e67d91a..cc3768a487caee9e6b76697e60c1d477
 -    from bokeh.embed.bundle import Bundle
      from bokeh.server.session import ServerSession
      from jinja2 import Template
- 
+
 @@ -288,72 +286,6 @@ state._on_session_created_internal.append(_initialize_session_info)
  # Bokeh patches
  #---------------------------------------------------------------------
- 
+
 -def html_page_for_render_items(
 -    bundle: Bundle | tuple[str, str], docs_json: dict[ID, DocJson],
 -    render_items: list[RenderItem], title: str, template: Template | str | None = None,
@@ -972,7 +972,7 @@ index 5a90d3f0d796a2e4bce3f977258f3ecc0e67d91a..cc3768a487caee9e6b76697e60c1d477
 @@ -376,23 +308,28 @@ def server_html_page_for_session(
      for root in doc.roots:
          patch_model_css(root, dist_url=dist_url)
- 
+
 -    render_item = RenderItem(
 -        token = token or session.token,
 -        roots = doc.roots,
@@ -987,10 +987,10 @@ index 5a90d3f0d796a2e4bce3f977258f3ecc0e67d91a..cc3768a487caee9e6b76697e60c1d477
 +        template_variables["app_favicon"] = (
 +            (f"{state.rel_path}/" if state.rel_path else "./") + "favicon.ico"
 +        )
- 
+
      if template is FILE:
          template = BASE_TEMPLATE
- 
+
      with set_curdoc(doc):
          bundle = bundle_resources(doc.roots, resources)
 -        html = html_page_for_render_items(
@@ -1010,7 +1010,7 @@ index 5a90d3f0d796a2e4bce3f977258f3ecc0e67d91a..cc3768a487caee9e6b76697e60c1d477
 @@ -405,8 +342,49 @@ def autoload_js_script(doc, resources, token, element_id, app_path, absolute_url
      resources = Resources.from_bokeh(resources, absolute=absolute)
      bundle = bundle_resources(doc.roots, resources)
- 
+
 -    render_items = [RenderItem(token=token, elementid=element_id, use_for_title=False)]
 -    bundle.add(Script(script_for_render_items({}, render_items, app_path=app_path, absolute_url=absolute_url)))
 +    keyed_roots = {root.id: root for root in doc.roots}
@@ -1056,22 +1056,22 @@ index 5a90d3f0d796a2e4bce3f977258f3ecc0e67d91a..cc3768a487caee9e6b76697e60c1d477
 +}})();
 +"""
 +    bundle.add(Script(script))
- 
+
      return AUTOLOAD_JS.render(bundle=bundle, elementid=element_id)
- 
+
 @@ -714,13 +692,32 @@ class DocHandler(LoginUrlMixin, BkDocHandler):
          self.set_header("Content-Type", 'text/html')
          self.write(page)
- 
+
 -# Patch Bokeh Autoload handler
 -class AutoloadJsHandler(BkAutoloadJsHandler):
 -    ''' Implements a custom Tornado handler for the autoload JS chunk
 +# Panel-owned compatibility endpoint; Bokeh 4 no longer exposes autoload.js.
 +class AutoloadJsHandler(BkSessionHandler):
 +    ''' Serve Panel's artifact-based compatibility autoload response.
- 
+
      '''
- 
+
 +    def set_default_headers(self) -> None:
 +        self.set_header("Access-Control-Allow-Origin", "*")
 +        self.set_header("Access-Control-Allow-Headers", "*")
@@ -1098,7 +1098,7 @@ index 5a90d3f0d796a2e4bce3f977258f3ecc0e67d91a..cc3768a487caee9e6b76697e60c1d477
 @@ -735,7 +732,9 @@ class AutoloadJsHandler(BkAutoloadJsHandler):
          else:
              server_url = None
- 
+
 -        session = await self.get_session()  # type: ignore
 +        session = await self.get_session()
 +        if session is None:
@@ -1109,17 +1109,17 @@ index 5a90d3f0d796a2e4bce3f977258f3ecc0e67d91a..cc3768a487caee9e6b76697e60c1d477
 @@ -748,6 +747,10 @@ class AutoloadJsHandler(BkAutoloadJsHandler):
          self.set_header("Content-Type", 'application/javascript')
          self.write(js)
- 
+
 +    async def options(self, *args, **kwargs) -> None:
 +        self.set_header('Access-Control-Allow-Methods', 'PUT, GET, OPTIONS')
 +        self._allow_websocket_origin()
 +
- 
+
  class WSHandler(BkWSHandler):
- 
+
 @@ -795,9 +798,11 @@ class WSHandler(BkWSHandler):
- 
- 
+
+
  _metadata_handler = per_app_patterns[2][1] if len(per_app_patterns) > 2 else BkMetadataHandler
 +_embed_json_handler = per_app_patterns[3][1] if len(per_app_patterns) > 3 else BkEmbedJsonHandler
  per_app_patterns[:] = [
@@ -1148,7 +1148,7 @@ index dabd10eff2b4f883cd5070fec4842d6bce0716a2..f8f871a2069daead5f4fa49dfb74b378
 +                return application_context.io_loop
 +        from tornado.ioloop import IOLoop
 +        return IOLoop.current()
- 
+
      @property
      def _extensions(self):
 diff --git a/panel/models/anywidget_component.ts b/panel/models/anywidget_component.ts
@@ -1156,7 +1156,7 @@ index 564dc35e8c87dbc9364eec4c7fdf813461e1f259..abc68ed579739a6d8861ec470280a0e9
 --- a/panel/models/anywidget_component.ts
 +++ b/panel/models/anywidget_component.ts
 @@ -164,10 +164,7 @@ export class AnyWidgetComponent extends ReactiveESM {
- 
+
    protected override _render_code(): string {
      return `
 -function render(id) {
@@ -1178,11 +1178,11 @@ index 9021e22d38ffd2fefbd7aef183cb0ff2c46f2715..55deceec1854aa7715f7efc09bb694b5
 +import type {ChildView} from "@bokehjs/core/build_views"
  import {build_view} from "@bokehjs/core/build_views"
  import type * as p from "@bokehjs/core/properties"
- 
+
 @@ -11,11 +11,8 @@ export class ButtonView extends BkButtonView {
- 
+
    protected tooltip: TooltipView | null
- 
+
 -  override *children(): IterViews {
 -    yield* super.children()
 -    if (this.tooltip != null) {
@@ -1191,7 +1191,7 @@ index 9021e22d38ffd2fefbd7aef183cb0ff2c46f2715..55deceec1854aa7715f7efc09bb694b5
 +  override _children_views(): ChildView[] {
 +    return [...super._children_views(), this.tooltip]
    }
- 
+
    override connect_signals(): void {
 diff --git a/panel/models/card.ts b/panel/models/card.ts
 index 7095f4cb606ff88378f4cbfef752b72b7037e2e2..b69189a8d39cf9f06e3847d134cf28cb753b74c1 100644
@@ -1200,7 +1200,7 @@ index 7095f4cb606ff88378f4cbfef752b72b7037e2e2..b69189a8d39cf9f06e3847d134cf28cb
 @@ -77,7 +77,7 @@ export class CardView extends ColumnView {
        })
      }
- 
+
 -    this._update_stylesheets()
 +    this._apply_stylesheets()
      this._update_css_classes()
@@ -1217,11 +1217,11 @@ index 0c8eeef6aa83b9cfc33620f9d2ab750162983a15..1bbe0c3800cc88bf01f56b517d83e68c
 +import type {ChildView} from "@bokehjs/core/build_views"
  import {build_view} from "@bokehjs/core/build_views"
  import type * as p from "@bokehjs/core/properties"
- 
+
 @@ -14,11 +14,8 @@ export class CheckboxButtonGroupView extends bkCheckboxButtonGroupView {
- 
+
    protected tooltip: TooltipView | null
- 
+
 -  override *children(): IterViews {
 -    yield* super.children()
 -    if (this.tooltip != null) {
@@ -1230,7 +1230,7 @@ index 0c8eeef6aa83b9cfc33620f9d2ab750162983a15..1bbe0c3800cc88bf01f56b517d83e68c
 +  override _children_views(): ChildView[] {
 +    return [...super._children_views(), this.tooltip]
    }
- 
+
    override connect_signals(): void {
 diff --git a/panel/models/comm_manager.ts b/panel/models/comm_manager.ts
 index 55d8d0cec150b41aec19d474713d8842c1943dbe..40fbaa342a891ed261c759e54b5574187fc2d161 100644
@@ -1247,7 +1247,7 @@ index 55d8d0cec150b41aec19d474713d8842c1943dbe..40fbaa342a891ed261c759e54b557418
 -        plot = (window as any).Bokeh.index[plot_id]
 -      }
 +      const plot = this.ns.plot_index?.[plot_id] ?? null
- 
+
        if (plot == null) {
          return
 diff --git a/panel/models/file_download.ts b/panel/models/file_download.ts
@@ -1263,7 +1263,7 @@ index 993225ad94f2e4d973c7a647ad6e5c4c1ff14a84..0b37ff646a0156f0df13a35f3e38fd74
 @@ -45,11 +45,8 @@ export class FileDownloadView extends InputWidgetView {
    _prev_href: string | null = ""
    _prev_download: string | null = ""
- 
+
 -  override *children(): IterViews {
 -    yield* super.children()
 -    if (this.icon_view != null) {
@@ -1272,7 +1272,7 @@ index 993225ad94f2e4d973c7a647ad6e5c4c1ff14a84..0b37ff646a0156f0df13a35f3e38fd74
 +  override _children_views(): ChildView[] {
 +    return [...super._children_views(), this.icon_view]
    }
- 
+
    override *controls() {
 diff --git a/panel/models/html.ts b/panel/models/html.ts
 index 38058f8edd7c8cab9de41097c196d6018b1cf0af..06de1271206b5d08fae61b1f0dde2fb8d1c67870 100644
@@ -1287,18 +1287,18 @@ index 38058f8edd7c8cab9de41097c196d6018b1cf0af..06de1271206b5d08fae61b1f0dde2fb8
 +    if (this.model.disable_math || MathJax == null || !this.contains_tex(text)) {
        return text
      }
- 
+
 -    const tex_parts = this.provider.MathJax.find_tex(text)
 +    const tex_parts = MathJax.find_tex(text)
      const processed_text: string[] = []
- 
+
      let last_index: number | undefined = 0
      for (const part of tex_parts) {
        processed_text.push(text.slice(last_index, part.start.n))
 -      processed_text.push(this.provider.MathJax.tex2svg(part.math, {display: part.display}).outerHTML)
 +      const rendered = MathJax.tex2svg(part.math, {display: part.display})
 +      processed_text.push(rendered.outerHTML)
- 
+
        last_index = part.end.n
      }
 diff --git a/panel/models/icon.ts b/panel/models/icon.ts
@@ -1317,7 +1317,7 @@ index 3f1acbb439ecabf69dd4efb6ec1fca65a10a0f77..91a74c5185b49ddfa7d4fe747107808c
 @@ -42,12 +42,8 @@ export class ClickableIconView extends ControlView {
      }
    }
- 
+
 -  override *children(): IterViews {
 -    yield* super.children()
 -    yield this.icon_view
@@ -1327,7 +1327,7 @@ index 3f1acbb439ecabf69dd4efb6ec1fca65a10a0f77..91a74c5185b49ddfa7d4fe747107808c
 +  override _children_views(): ChildView[] {
 +    return [...super._children_views(), this.icon_view, this.tooltip]
    }
- 
+
    is_svg_icon(icon: string): boolean {
 @@ -121,9 +117,9 @@ export class ClickableIconView extends ControlView {
      const size = this.calculate_size()
@@ -1372,7 +1372,7 @@ index 8b7fd827dc53de34e706261b4c7fd9a364214f79..44decc3aa18800722349e927c8e9c1a5
 +    }
 +    const tex_parts = MathJax.find_tex(text)
      const processed_text: string[] = []
- 
+
      let last_index: number | undefined = 0
      for (const part of tex_parts) {
        processed_text.push(text.slice(last_index, part.start.n))
@@ -1393,11 +1393,11 @@ index c18c18446660bf23e08e91c6a6f41c6c8db6ddad..a7e98e67b90e1399501f0ed746459741
 +import type {ChildView} from "@bokehjs/core/build_views"
  import {build_view} from "@bokehjs/core/build_views"
  import type * as p from "@bokehjs/core/properties"
- 
+
 @@ -14,11 +14,8 @@ export class RadioButtonGroupView extends bkRadioButtonGroupView {
- 
+
    protected tooltip: TooltipView | null
- 
+
 -  override *children(): IterViews {
 -    yield* super.children()
 -    if (this.tooltip != null) {
@@ -1406,7 +1406,7 @@ index c18c18446660bf23e08e91c6a6f41c6c8db6ddad..a7e98e67b90e1399501f0ed746459741
 +  override _children_views(): ChildView[] {
 +    return [...super._children_views(), this.tooltip]
    }
- 
+
    override connect_signals(): void {
 diff --git a/panel/models/react_component.ts b/panel/models/react_component.ts
 index 2ee30ec2aa98775a26824bc2b17457bcbe873f00..b019c1afe93ba46b91a11f2e6933628633a3d4fc 100644
@@ -1427,18 +1427,18 @@ index 2ee30ec2aa98775a26824bc2b17457bcbe873f00..b019c1afe93ba46b91a11f2e69336286
 -import {isString} from "@bokehjs/core/util/types"
  import type {UIElementView} from "@bokehjs/models/ui/ui_element"
  import type {Transform} from "sucrase"
- 
+
 @@ -20,8 +18,8 @@ import {
  export class HostedStyleSheet extends InlineStyleSheet {
    host_id: string
- 
+
 -  constructor(css?: string | CSSStyleSheetDecl, id?: string, override readonly persistent: boolean = false, host_id: string = "") {
 -    super(css, id, persistent)
 +  constructor(css?: string | CSSStyleSheetDecl, id?: string, readonly persistent: boolean = false, host_id: string = "") {
 +    super(css, id)
      this.host_id = host_id
    }
- 
+
 @@ -141,7 +139,7 @@ export class ReactComponentView extends ReactiveESMView {
          this._resolve_mounted()
          return
@@ -1460,7 +1460,7 @@ index 2ee30ec2aa98775a26824bc2b17457bcbe873f00..b019c1afe93ba46b91a11f2e69336286
 @@ -212,8 +210,12 @@ export class ReactComponentView extends ReactiveESMView {
      return root
    }
- 
+
 -  protected override _apply_stylesheets(stylesheets: StyleSheetLike[]): void {
 -    const resolved_stylesheets = stylesheets.map((style) => isString(style) ? new InlineStyleSheet(style) : style)
 +  protected override _apply_stylesheets(): void {
@@ -1502,9 +1502,9 @@ index 2ee30ec2aa98775a26824bc2b17457bcbe873f00..b019c1afe93ba46b91a11f2e69336286
 +      destination.append(element)
      })
    }
- 
+
 @@ -362,7 +366,7 @@ export class ReactComponentView extends ReactiveESMView {
- 
+
    patch_container(container: HTMLDivElement): void {
      this.el = this.container = container
 -    this._update_stylesheets()
@@ -1515,7 +1515,7 @@ index 2ee30ec2aa98775a26824bc2b17457bcbe873f00..b019c1afe93ba46b91a11f2e69336286
 @@ -461,12 +465,8 @@ import { CacheProvider } from "@emotion/react"`
      return `
  ${import_code}
- 
+
 -async function render(id) {
 -  const view = Bokeh.index.find_one_by_id(id)
 -  if (view == null) {
@@ -1525,7 +1525,7 @@ index 2ee30ec2aa98775a26824bc2b17457bcbe873f00..b019c1afe93ba46b91a11f2e69336286
 +async function render(view) {
 +  const id = view.model.id
    ${bundle_code}
- 
+
    class Child extends React.PureComponent {
 @@ -532,7 +532,7 @@ async function render(id) {
            view.model.render_module.then(async (mod) => {
@@ -1550,7 +1550,7 @@ index 7d5f9539ae98fdbeaebeb77681745eb65082457f..fa2088903c91c2c96ba0512746ce85cf
 --- a/panel/models/reactive_esm.ts
 +++ b/panel/models/reactive_esm.ts
 @@ -354,7 +354,7 @@ export class ReactiveESMView extends HTMLBoxView {
- 
+
    override render(): void {
      this.empty()
 -    this._update_stylesheets()
@@ -1566,9 +1566,9 @@ index 7d5f9539ae98fdbeaebeb77681745eb65082457f..fa2088903c91c2c96ba0512746ce85cf
 +    const render_promise = this.model.render_module.then((mod: any) => mod.default.render(this))
      this._await_ready(render_promise)
    }
- 
+
 @@ -884,12 +884,7 @@ export class ReactiveESM extends HTMLBox {
- 
+
    protected _render_code(): string {
      return `
 -function render(id) {
@@ -1586,7 +1586,7 @@ index b02e2a10e7dc68b4c1487e5071c9c5b05a16ae19..d972aff253008125584ef6404822866a
 --- a/panel/models/reactive_html.ts
 +++ b/panel/models/reactive_html.ts
 @@ -255,7 +255,7 @@ export class ReactiveHTMLView extends HTMLBoxView {
- 
+
    override render(): void {
      this.empty()
 -    this._update_stylesheets()
@@ -1601,7 +1601,7 @@ index 089717a0a139d3044f792f82e92edc691282f488..cc570a93b54f73431fdfb4132adb4a37
 @@ -117,31 +117,6 @@ export class TabsView extends BkTabsView {
      }
    }
- 
+
 -  override update_active(): void {
 -    const i = this.model.active
 -
@@ -1628,7 +1628,7 @@ index 089717a0a139d3044f792f82e92edc691282f488..cc570a93b54f73431fdfb4132adb4a37
 -    }
 -  }
  }
- 
+
  export namespace Tabs {
 diff --git a/panel/models/tooltip_icon.ts b/panel/models/tooltip_icon.ts
 index 349c8c156f4d4455448e405b0112dc0aca5ed60a..a45641f5efeaf443ce24fca3e020cbd712671d3f 100644
@@ -1636,7 +1636,7 @@ index 349c8c156f4d4455448e405b0112dc0aca5ed60a..a45641f5efeaf443ce24fca3e020cbd7
 +++ b/panel/models/tooltip_icon.ts
 @@ -110,7 +110,7 @@ export class TooltipIcon extends LayoutDOM {
      this.prototype.default_view = TooltipIconView
- 
+
      this.define<TooltipIcon.Props>(({Ref}) => ({
 -      description: [Ref(Tooltip), new Tooltip()],
 +      description: [Ref(Tooltip), Tooltip.create()],
@@ -1649,7 +1649,7 @@ index ac3b5f1bf89c069c4d83dd98618d31d029668f78..ca6aff8d9774edced64f4ca7975c569d
 +++ b/panel/models/trend.ts
 @@ -68,7 +68,7 @@ export class TrendIndicatorView extends HTMLBoxView {
    }
- 
+
    private async setPlot() {
 -    this.plot = new Plot({
 +    this.plot = Plot.create({
@@ -1657,7 +1657,7 @@ index ac3b5f1bf89c069c4d83dd98618d31d029668f78..ca6aff8d9774edced64f4ca7975c569d
        border_fill_color: null,
        outline_line_color: null,
 @@ -79,7 +79,7 @@ export class TrendIndicatorView extends HTMLBoxView {
- 
+
      const source = this.model.source
      if (this.model.plot_type === "line") {
 -      const line = new Line({
@@ -1702,7 +1702,7 @@ index ac3b5f1bf89c069c4d83dd98618d31d029668f78..ca6aff8d9774edced64f4ca7975c569d
          top: {field: this.model.plot_y},
          width: 0.9,
 @@ -254,8 +254,8 @@ export class TrendIndicator extends HTMLBox {
- 
+
      this.define<TrendIndicator.Props>(({Float, Str, Ref}) => ({
        description:  [ Str,              "" ],
 -      formatter:        [ Ref(TickFormatter), () => new BasicTickFormatter() ],
@@ -1722,9 +1722,9 @@ index 0ac6c741d44e555d55319ad38547d5b604312b54..9c3fc2b7f126ef899df8039f57bfef52
          'latimes', 'urbaninstitute', 'googlecharts', 'powerbi', 'carbonwhite', 'carbong10', 'carbong90', 'carbong100']
 -VegaTheme = enumeration(VegaThemeType)
 +VegaTheme = enumeration(*t.get_args(VegaThemeType))
- 
+
  class VegaEvent(ModelEvent):
- 
+
 diff --git a/panel/models/vtk/vtkcolorbar.ts b/panel/models/vtk/vtkcolorbar.ts
 index 325202776177939e3f163e33df8e061330d7a712..b0b643fb42a80651523e2ba512d1c791e42af407 100644
 --- a/panel/models/vtk/vtkcolorbar.ts
@@ -2116,14 +2116,14 @@ index 2e40e3eb26a17631a523d5e17fb587b6d5efc572..34e5f06c0943427609822f9d72cc37ae
 --- a/panel/tests/io/test_embed.py
 +++ b/panel/tests/io/test_embed.py
 @@ -522,6 +522,10 @@ def test_embed_merged_sliders(document, comm):
- 
+
      cbs = list(model.select({'type': CustomJS}))
      assert len(cbs) == 5
 +    state_callbacks = [cb for cb in cbs if 'state.set_state' in cb.code]
 +    assert state_callbacks
 +    assert all(cb.args['state'] is state_model for cb in state_callbacks)
 +    assert all(state_model.id not in cb.code for cb in state_callbacks)
- 
+
      ref1, ref2 = model.children[2].ref['id'], model.children[3].ref['id']
      ref3 = model.children[0].children[0].ref['id']
 diff --git a/panel/tests/io/test_notebook.py b/panel/tests/io/test_notebook.py
@@ -2132,7 +2132,7 @@ index d44f7314059bdba5c72fa320f119fb84d544c7f2..2cf7afe4bcb577075ad57a3457abb47c
 +++ b/panel/tests/io/test_notebook.py
 @@ -5,7 +5,7 @@ pytest.importorskip("IPython")
  from bokeh.models import ImportedStyleSheet, InlineStyleSheet
- 
+
  from panel.config import config, panel_extension
 -from panel.io.notebook import ipywidget, replace_inline_css
 +from panel.io.notebook import ipywidget, render_model, replace_inline_css
@@ -2172,7 +2172,7 @@ index dff455b72e959e8660a3a9d119a4b5c4de1b41e3..927b1b216025d8a9bd2757ef409b197d
  from panel.template import BootstrapTemplate
  from panel.tests.util import hv_available
 +from panel.widgets import Checkbox
- 
+
  vega_example = {
      'config': {
 @@ -38,6 +40,10 @@ def test_save_external():
@@ -2185,11 +2185,11 @@ index dff455b72e959e8660a3a9d119a4b5c4de1b41e3..927b1b216025d8a9bd2757ef409b197d
 +    assert 'Bokeh.index' not in html
      for js in VegaPlot.__javascript_raw__:
          assert js.replace(config.npm_cdn, f'{CDN_DIST}bundled/vegaplot') in html
- 
+
 @@ -62,6 +68,17 @@ def test_save_cdn_resources():
      assert re.findall('https://cdn.holoviz.org/panel/(.*)/dist/panel.min.js', html)
- 
- 
+
+
 +def test_save_embed_state_uses_protocol_ids():
 +    checkbox = Checkbox()
 +    text = Str()
@@ -2207,7 +2207,7 @@ index dff455b72e959e8660a3a9d119a4b5c4de1b41e3..927b1b216025d8a9bd2757ef409b197d
 @@ -88,6 +105,8 @@ def test_save_template():
      sio.seek(0)
      html = sio.read()
- 
+
 -    for doc in template._documents:
 -        for root in doc.roots:
 -            assert f"data-root-id=\"{root.ref['id']}\"" in html
@@ -2235,8 +2235,8 @@ index 7799c81755cd84371e7c869211ff3b77ddc3c598..6e9783a5848c67326cf90815d9f63f3c
  from panel.models import HTML as BkHTML
 @@ -41,6 +41,13 @@ from panel.widgets import (
  PYTEST_VERSION = Version(pytest.__version__).release
- 
- 
+
+
 +def test_bokeh4_embedding_routes():
 +    routes = {route: handler for route, handler, *_ in per_app_patterns}
 +
@@ -2249,8 +2249,8 @@ index 7799c81755cd84371e7c869211ff3b77ddc3c598..6e9783a5848c67326cf90815d9f63f3c
      html, server, session, port = html_server_session
 @@ -323,6 +330,14 @@ def test_server_extensions_on_root(server_implementation):
      assert serve_and_request(md).ok
- 
- 
+
+
 +def test_server_artifact_page(server_implementation):
 +    page = serve_and_request(Markdown('# Title')).content.decode('utf-8')
 +
@@ -2264,7 +2264,7 @@ index 7799c81755cd84371e7c869211ff3b77ddc3c598..6e9783a5848c67326cf90815d9f63f3c
      r = serve_and_request(md, suffix='/static/extensions/panel/panel.min.js')
 @@ -337,7 +352,15 @@ def test_autoload_js(port):
      r = serve_and_request({app_name: html}, port=port, suffix=f"/{app_name}/autoload.js?{args}")
- 
+
      assert r.status_code == 200
 -    assert f"http://localhost:{port}/static/extensions/panel/panel.min.js" in r.content.decode('utf-8')
 +    autoload = r.content.decode('utf-8')
@@ -2276,11 +2276,11 @@ index 7799c81755cd84371e7c869211ff3b77ddc3c598..6e9783a5848c67326cf90815d9f63f3c
 +    assert 'Bokeh.documents' not in autoload
 +    assert 'Bokeh.index' not in autoload
 +    assert 'embed_items' not in autoload
- 
- 
+
+
  def test_server_async_callbacks(server_implementation):
 @@ -526,6 +549,9 @@ def test_server_cancel_task(server_implementation):
- 
+
      wait_until(lambda: state.cache['count'] > 0)
      state.cancel_task('periodic')
 +    # Allow an already dispatched callback to complete before asserting that
@@ -2295,8 +2295,8 @@ index 7799c81755cd84371e7c869211ff3b77ddc3c598..6e9783a5848c67326cf90815d9f63f3c
      assert abs(state.cache['at'] - scheduled[0]) < dt.timedelta(seconds=0.2)
 -    assert len(state._scheduled) == 0
 +    assert not any(key.endswith('_periodic') for key in state._scheduled)
- 
- 
+
+
  def test_server_schedule_at_iterator(server_implementation):
 @@ -653,7 +679,7 @@ def test_server_schedule_at_iterator(server_implementation):
      wait_until(lambda: len(state.cache['at']) == 2)
@@ -2304,8 +2304,8 @@ index 7799c81755cd84371e7c869211ff3b77ddc3c598..6e9783a5848c67326cf90815d9f63f3c
      assert abs(state.cache['at'][1] - scheduled[1]) < dt.timedelta(seconds=0.2)
 -    assert len(state._scheduled) == 0
 +    assert not any(key.endswith('_periodic') for key in state._scheduled)
- 
- 
+
+
  def test_server_schedule_at_callable(server_implementation):
 @@ -683,7 +709,7 @@ def test_server_schedule_at_callable(server_implementation):
      converted = [s.replace(tzinfo=dt.timezone.utc).astimezone().replace(tzinfo=None) for s in scheduled]
@@ -2313,8 +2313,8 @@ index 7799c81755cd84371e7c869211ff3b77ddc3c598..6e9783a5848c67326cf90815d9f63f3c
      assert abs(state.cache['at'][1] - converted[1]) < dt.timedelta(seconds=0.2)
 -    assert len(state._scheduled) == 0
 +    assert not any(key.endswith('_periodic') for key in state._scheduled)
- 
- 
+
+
  @pytest.mark.xdist_group(name="server")
 diff --git a/panel/tests/ui/io/test_notifications.py b/panel/tests/ui/io/test_notifications.py
 index e496f1e326a02fbb179598bf1727ed22c7503989..ad1de61e6ccc3a6c522240aa3f4cf8374325ea33 100644
@@ -2328,7 +2328,7 @@ index e496f1e326a02fbb179598bf1727ed22c7503989..ad1de61e6ccc3a6c522240aa3f4cf837
 +        cb_obj.document.event_manager.send_event({'event_name': 'connection_lost', 'publish': false})
          """)
          return button
- 
+
 diff --git a/panel/tests/ui/pane/test_markup.py b/panel/tests/ui/pane/test_markup.py
 index 69b0f1d318972788f63979fb51a77d7eeb75dd2e..62185f1e2b40ad8f77d08c78c43cc176f111ba4b 100644
 --- a/panel/tests/ui/pane/test_markup.py
@@ -2336,7 +2336,7 @@ index 69b0f1d318972788f63979fb51a77d7eeb75dd2e..62185f1e2b40ad8f77d08c78c43cc176
 @@ -189,8 +189,10 @@ def test_markdown_pane_visible_after_stylesheet_url_patched(page):
      expect(page.locator(".markdown")).to_have_count(1)
      expect(page.locator(".markdown").locator("div")).not_to_be_visible()
- 
+
 -    page.evaluate("""() => {  // Mimic Panel patching the stylesheet URLs
 -      for (const model of Bokeh.documents[0].all_models) {
 +    page.evaluate("""async () => {  // Mimic Panel patching the stylesheet URLs
@@ -2351,7 +2351,7 @@ index bdbbaecda17d4d74406d068316a80c7bd865b3a6..4af468d6a402b78f03f03867f6d421bc
 --- a/panel/tests/ui/test_custom.py
 +++ b/panel/tests/ui/test_custom.py
 @@ -1507,8 +1507,10 @@ def test_react_root_ready_after_child_update(page):
- 
+
      # After the child swap, re-check root.ready resolves
      page.wait_for_function("""
 -        () => {
@@ -2364,7 +2364,7 @@ index bdbbaecda17d4d74406d068316a80c7bd865b3a6..4af468d6a402b78f03f03867f6d421bc
              const root = views[0].root
              let resolved = false
 @@ -1558,8 +1560,10 @@ def test_react_root_ready_after_children_append(page):
- 
+
      # After appending, root.ready should resolve once the new child is mounted
      page.wait_for_function("""
 -        () => {
@@ -2398,7 +2398,7 @@ index bdbbaecda17d4d74406d068316a80c7bd865b3a6..4af468d6a402b78f03f03867f6d421bc
      }
 @@ -1650,8 +1656,10 @@ def test_children_updates_do_not_overlap(page):
      assert page.evaluate('() => window._overlaps') == 0
- 
+
      page.wait_for_function("""
 -        () => {
 -            const views = Object.values(Bokeh.index)
@@ -2415,7 +2415,7 @@ index 7aa2d811050dcf0032b5063052b13ed9c7c660c6..a32beb068339b5c4fa6b43119e47076f
 +++ b/panel/tests/ui/widgets/test_tabulator.py
 @@ -217,12 +217,18 @@ def test_tabulator_movable_columns(page):
      ]
- 
+
      assert page.evaluate(
 -        "() => Object.values(Bokeh.index)[0].tabulator.options.movableColumns"
 +        """async () => {
@@ -2424,7 +2424,7 @@ index 7aa2d811050dcf0032b5063052b13ed9c7c660c6..a32beb068339b5c4fa6b43119e47076f
 +          return mounted.views[0].tabulator.options.movableColumns
 +        }"""
      )
- 
+
      page.evaluate(
 -        """() => {
 -          const table = Object.values(Bokeh.index)[0].tabulator
@@ -2436,7 +2436,7 @@ index 7aa2d811050dcf0032b5063052b13ed9c7c660c6..a32beb068339b5c4fa6b43119e47076f
          }"""
      )
 @@ -244,7 +250,11 @@ def test_tabulator_movable_columns(page):
- 
+
      wait_until(
          lambda: not page.evaluate(
 -            "() => Object.values(Bokeh.index)[0].tabulator.options.movableColumns"
@@ -2463,7 +2463,7 @@ index f5d961c7297ab83ffd258f348504bfdb8dac425e..d59b9b9ff78f3d40eb4861ef3b80c9d3
      "packaging",
 @@ -48,7 +48,7 @@ classifiers = [
  ]
- 
+
  dependencies = [
 -    'bokeh >=3.7.0,<3.10.0',
 +    'bokeh >=4.0.0.dev1,<4.1.0',
