@@ -441,9 +441,9 @@ The initial implementation resolves several choices left open above:
   route set and returns the signed session token used by the server-source
   decoder.
 
-The complete 4.0 recipes, schema notes, and downstream propagation decisions
-are recorded in `outputs/embed-04-artifact-runtime.md`; deterministic payload
-and bundle results are in `outputs/embed-04-artifact-measurements.md`.
+The complete 4.0 recipes, schema notes, downstream propagation decisions, and
+deterministic payload/bundle results are recorded here and in the EMBED 04
+section of `outputs/embed-stack-verification.md`.
 
 ## Sphinx and documentation builds as a primary design case
 
@@ -536,7 +536,8 @@ The highest-density generated page mounted all 42 roots with four exact bundles,
 one payload, one bootstrap, and no browser console errors. Core/plot, tables,
 WebGL, MathJax, and compiled custom-extension pages also passed full-output
 browser smoke tests. Detailed bytes, requests, hashes, and focused validation
-totals are in `outputs/embed-05-sphinx-measurements.md`.
+totals are preserved in the EMBED 05 section of
+`outputs/embed-stack-verification.md`.
 
 ## Proposed public API and 4.0 migration mapping
 
@@ -864,8 +865,8 @@ Treat the completed Bokeh 4.0 embedding stack as the input, then evaluate Panel 
 The final deliverable is an evidence-backed impact assessment plus an applicable
 45-file Panel diff at revision
 `be0b5e2b0955a38a8871aa3fc1703b57c76c1e81`. The diff is exercised against the
-completed stack through `codex/embed-07-view-index-cleanup` at
-`159f97de9eb8bdd24c363c50095bdb6565c4a002`. It removes Panel's global view
+completed runtime represented by `codex/embed-07-view-index-cleanup`, now at
+`21931d5ac3fad225abb68f3b3e7564bd42404e10`. It removes Panel's global view
 fallbacks and keeps unsupported WASM transport paths behind explicit migration
 errors instead of fabricating compatibility.
 

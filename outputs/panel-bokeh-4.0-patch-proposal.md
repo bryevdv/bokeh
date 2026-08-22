@@ -5,7 +5,11 @@ Target Panel revision:
 
 Bokeh architecture parent:
 `codex/embed-07-view-index-cleanup` at
-`159f97de9eb8bdd24c363c50095bdb6565c4a002`.
+`21931d5ac3fad225abb68f3b3e7564bd42404e10`.
+
+The downstream browser and build validation ran before the final review-only
+documentation, TSDoc, and test commit on that branch. No Bokeh runtime behavior
+used by this patch changed in that commit.
 
 Patch artifact: `outputs/panel-bokeh-4.0.patch`.
 

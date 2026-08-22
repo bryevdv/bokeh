@@ -317,7 +317,7 @@ Acceptance:
 - lifecycle-aware model construction and rollback remain intact;
 - size and determinism measurements are recorded for representative documents.
 
-### EMBED 04 — Artifact and resource runtime
+### EMBED 04 — Embedding compiler and delivery runtime
 
 Implement the versioned Python/JavaScript `EmbedArtifact`, compiler, renderers, resource requirements/policy resolver, promise-based loader, server-source representation, useful thin facades, and explicit 4.0 migration diagnostics. Extend the lifecycle branch's `mount()` instead of introducing another browser entry point.
 
@@ -349,9 +349,9 @@ Implemented EMBED 04 decisions that later layers must preserve:
 - CSP `external_only` output requires external payload and bootstrap URLs;
   offline output rejects every external requirement.
 
-Detailed API and migration recipes are in
-`outputs/embed-04-artifact-runtime.md`; determinism results are in
-`outputs/embed-04-artifact-measurements.md`.
+Detailed API, migration, and determinism evidence is recorded in the EMBED 04
+sections of `outputs/embedding-architecture-proposal.md` and
+`outputs/embed-stack-verification.md`.
 
 ### EMBED 05 — Sphinx and `bokeh-embed`
 
@@ -410,8 +410,8 @@ Implemented EMBED 05 decisions that later layers must preserve:
   the packaged `compiler.js`, allowing custom-extension docs to build under
   the project's Node 24 ESM package scope.
 
-Full-build, incremental, browser, request, and size evidence is recorded in
-`outputs/embed-05-sphinx-measurements.md`.
+Full-build, incremental, browser, request, and size evidence is recorded in the
+EMBED 05 section of `outputs/embed-stack-verification.md`.
 
 ### EMBED 06 — Jupyter and notebook hosts
 
@@ -439,8 +439,8 @@ models use explicit `CustomJS.args`.
 
 Final parent for the downstream audit:
 `codex/embed-07-view-index-cleanup` at
-`159f97de9eb8bdd24c363c50095bdb6565c4a002`, based on EMBED 06 at
-`885d319d5cfb19644538b559c94b7f1047475d14`.
+`21931d5ac3fad225abb68f3b3e7564bd42404e10`, based on EMBED 06 at
+`677b0f05384f0126057a79a1097daf3930ebfa20`.
 
 ### EMBED 08 — Panel downstream impact and patch proposal
 

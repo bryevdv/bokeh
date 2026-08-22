@@ -1,9 +1,13 @@
 # Panel downstream impact of the final Bokeh 4 embedding stack
 
 Status: final local EMBED 08 assessment. It evaluates the complete stack through
-`codex/embed-07-view-index-cleanup` at
-`159f97de9eb8bdd24c363c50095bdb6565c4a002`, including removal of public global
+`codex/embed-07-view-index-cleanup`, now at
+`21931d5ac3fad225abb68f3b3e7564bd42404e10`, including removal of public global
 view/document discovery. It is not part of a public Bokeh pull request.
+
+The final EMBED 07 review commit after the downstream browser/build validation
+contains documentation, TSDoc, and tests only; the runtime exercised by this
+assessment is unchanged.
 
 ## Inspection anchor and version assumption
 
