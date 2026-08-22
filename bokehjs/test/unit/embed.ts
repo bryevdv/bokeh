@@ -1,6 +1,7 @@
 import {expect} from "#framework/assertions"
 
 import {mount} from "@bokehjs/api/io"
+import * as Plotting from "@bokehjs/api/plotting"
 import * as embed from "@bokehjs/embed"
 import * as Bokeh from "@bokehjs/index"
 import {Document} from "@bokehjs/document"
@@ -56,6 +57,8 @@ describe("embed", () => {
       expect("index" in embed).to.be.false
       expect("index" in Bokeh).to.be.false
       expect("documents" in Bokeh).to.be.false
+      expect("mount" in Plotting).to.be.true
+      expect("when_mounted" in Plotting).to.be.true
     } finally {
       await mounted.dispose()
     }

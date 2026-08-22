@@ -8,6 +8,7 @@ import {logger} from "@bokehjs/core/logging"
 import {Document} from "@bokehjs/document"
 import {version as js_version} from "@bokehjs/version"
 import {ViewManager} from "@bokehjs/core/view_manager"
+import {mount} from "@bokehjs/api/io"
 
 describe("CustomJS", () => {
 
@@ -167,6 +168,31 @@ describe("CustomJS", () => {
       doc.views_manager = new ViewManager()
       expect(await cb.execute(cb)).to.be.true
       doc.destroy()
+    })
+
+    it("should isolate view lookups between independently mounted documents", async () => {
+      const first_cb = CustomJS.create({code: "return cb_context.index"})
+      const second_cb = CustomJS.create({code: "return cb_context.index"})
+      const first_doc = new Document({roots: [first_cb]})
+      const second_doc = new Document({roots: [second_cb]})
+      const first_target = document.createElement("div")
+      const second_target = document.createElement("div")
+      document.body.append(first_target, second_target)
+      const first_mount = mount(first_doc, first_target)
+      const second_mount = mount(second_doc, second_target)
+
+      await Promise.all([first_mount.ready, second_mount.ready])
+      try {
+        const first_lookup = await first_cb.execute(first_cb)
+        const second_lookup = await second_cb.execute(second_cb)
+        expect(first_lookup).to.be.equal(first_mount.view_lookup)
+        expect(second_lookup).to.be.equal(second_mount.view_lookup)
+        expect(first_lookup == second_lookup).to.be.false
+      } finally {
+        await Promise.all([first_mount.dispose(), second_mount.dispose()])
+        first_target.remove()
+        second_target.remove()
+      }
     })
   })
 })
