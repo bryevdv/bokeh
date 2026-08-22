@@ -1,6 +1,10 @@
 import {BokehNotebookError, DisplayPayload} from "./protocol"
 import {KernelProxy, LiveConnection, ResourceRecord, currentDocumentSnapshot, renderDiagnostic, renderDisplay, renderLoading} from "./runtime"
 
+// AnyWidget is a transport adapter, not a rendering implementation. It owns
+// the comm queues and maps them onto renderDisplay(), which in turn owns the
+// common artifact/resource/BokehMount lifecycle used by every notebook host.
+
 type AnyModel = {
   get(name: string): any
   on(name: string, callback: (...args: any[]) => void): void
@@ -46,6 +50,10 @@ function dataViews(buffers: ArrayBufferView[] = []): DataView[] {
 }
 
 export default function anywidgetFactory() {
+  // initialize() may run before render() and patches may arrive before a view
+  // exists. Keep one bounded, revisioned queue until render() attaches the
+  // listener; overflow requests a complete snapshot instead of retaining an
+  // unbounded or partially ordered history.
   let snapshot: Snapshot | undefined
   let snapshotResolve: ((value: Snapshot) => void) | undefined
   let snapshotReject: ((error: unknown) => void) | undefined
@@ -142,6 +150,9 @@ export default function anywidgetFactory() {
     model.on("msg:custom", receive)
     model.send({kind: "ready"})
     signal.addEventListener("abort", () => {
+      // The AnyWidget abort signal is the host's release boundary. Reject
+      // outstanding work, unsubscribe from the comm, and tell Python to drop
+      // this view; render() separately disposes its BokehMount.
       const error = new DOMException("Rendering was cancelled", "AbortError")
       for (const waiter of resourceWaiters.values()) waiter.reject(error)
       resourceWaiters.clear()
@@ -191,6 +202,9 @@ export default function anywidgetFactory() {
         }
       },
       async openLive(_liveId): Promise<LiveConnection> {
+        // A newly rendered or reconnected view starts from the latest complete
+        // snapshot, then drains only later queued revisions. This keeps every
+        // frontend independent and avoids a page-global live document owner.
         const current = snapshot ?? await waitForTransport(snapshotReady, 5000, new BokehNotebookError(
           "ANYWIDGET_LIVE_CONNECTION_TIMEOUT",
           "Python did not open the AnyWidget live document channel within 5000 ms.",
