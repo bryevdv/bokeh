@@ -61,11 +61,13 @@ The public `mount()`/`BokehMount` TSDoc now explains target and document
 ownership, immediate handle return, readiness, structured failure, selective
 attach/detach/replace, and idempotent disposal. React, Vue, Svelte, Angular,
 and Web Component adapters state that they delegate to this common handle.
-The framework example index describes the distinct lifecycle evidence supplied
-by each runnable app.
+The public framework examples stay focused on ordinary application code. The
+packed-package test matrix overlays private lifecycle controls where deeper
+mount, disposal, and rollback assertions are needed.
 
 Best demo: `bokehjs/examples/frameworks`. Best contract test:
-`bokehjs/test/unit/api/io.ts`.
+`bokehjs/test/unit/api/io.ts`. Best adapter lifecycle fixture:
+`bokehjs/test/frameworks/apps/angular/src/main.ts`.
 
 ### EMBED 03 — graph-minimal static identities
 
