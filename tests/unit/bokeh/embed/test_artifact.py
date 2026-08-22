@@ -10,6 +10,7 @@ from __future__ import annotations
 # Standard library imports
 import json
 from copy import deepcopy
+from dataclasses import fields
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -321,6 +322,13 @@ def test_typed_renderers_cover_fragment_page_external_and_mime(tmp_path: Path) -
     assert "fetch(" not in external.bootstrap
     assert "data-bokeh-payload-url=\"/assets/plot.json\"" in external.html
     assert external.build_fingerprint == artifact.external("/assets/plot.json", resources="none").build_fingerprint
+
+    assert tuple(field.name for field in fields(fragment)) == (
+        "artifact", "mounts", "script", "resources", "build_fingerprint", "html",
+    )
+    assert tuple(field.name for field in fields(external)) == (
+        "artifact", "payload_url", "mounts", "bootstrap", "resources", "build_fingerprint", "html",
+    )
 
     mime = artifact._repr_mimebundle_()
     assert mime["application/vnd.bokeh.embed+json"] == artifact.to_dict()
