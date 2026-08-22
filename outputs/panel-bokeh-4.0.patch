@@ -1,0 +1,2472 @@
+diff --git a/panel/_param.py b/panel/_param.py
+index 7fd4b23e98a1f5fec77155caea538b82f5d54740..c76a5b4e725dea1fc2e04a19d3a0475df4bc4b83 100644
+--- a/panel/_param.py
++++ b/panel/_param.py
+@@ -6,7 +6,7 @@ from bokeh.core.enums import enumeration
+ from param import Parameter, _is_number
+ 
+ AlignmentType = t.Literal["auto", "start", "center", "end"]
+-Alignment = enumeration(AlignmentType)
++Alignment = enumeration(*t.get_args(AlignmentType))
+ MarginType: t.TypeAlias = int | tuple[int, int] | tuple[int, int, int, int]
+ 
+ 
+diff --git a/panel/_templates/doc_nb_js.js b/panel/_templates/doc_nb_js.js
+index d138c5b02e16117afc8e54b1b1f9e52e6b6a7f36..66db4eb9401f061da1dff7eeafc0f55314a3ad5f 100644
+--- a/panel/_templates/doc_nb_js.js
++++ b/panel/_templates/doc_nb_js.js
+@@ -1,28 +1,44 @@
+ (function(root) {
+-  var docs_json = {{ docs_json }};
+-  var render_items = {{ render_items }};
+-  var docs = Object.values(docs_json)
+-  if (!docs) {
+-    return
+-  }
+-  const version = docs[0].version.replace('rc', '-rc.').replace('.dev', '-dev.')
++  const artifact = {{ artifact }};
++  const version = artifact.bokeh_version.replace('rc', '-rc.').replace('.dev', '-dev.')
+   async function embed_document(root) {
+-    var Bokeh = get_bokeh(root)
+-    await Bokeh.embed.embed_items_notebook(docs_json, render_items);
+-    for (const render_item of render_items) {
+-      for (const root_id of render_item.root_ids) {
+-	const id_el = document.getElementById(root_id)
+-	if (id_el.children.length && id_el.children[0].hasAttribute('data-root-id')) {
+-	  const root_el = id_el.children[0]
+-	  root_el.id = root_el.id + '-rendered'
+-	  for (const child of root_el.children) {
+-            // Ensure JupyterLab does not capture keyboard shortcuts
+-            // see: https://jupyterlab.readthedocs.io/en/4.1.x/extension/notebook.html#keyboard-interaction-model
+-	    child.setAttribute('data-lm-suppress-shortcuts', 'true')
+-	  }
+-	}
+-      }
++    const Bokeh = get_bokeh(root)
++    const controller = new AbortController()
++    const target = document.querySelector(
++      '[data-bokeh-artifact="{{ artifact_fingerprint }}"][data-bokeh-root="{{ root_key }}"]'
++    )
++    if (target == null) {
++      throw new Error("Panel could not find the Bokeh artifact mount target")
+     }
++    const handle = Bokeh.mount(artifact, {
++      targets: {"{{ root_key }}": target},
++      resources: "none",
++      signal: controller.signal,
++      on_error(error) {
++        target.dataset.bokehError = error.kind
++        console.error("Panel failed to mount a Bokeh artifact", error)
++      },
++    })
++    const mounted = await Bokeh.when_mounted(target, {signal: controller.signal})
++    if (mounted !== handle) {
++      throw new Error("Panel discovered a mount other than the one it created")
++    }
++    await mounted.ready
++    target.dataset.bokehReady = "true"
++    for (const child of target.children) {
++      // Ensure JupyterLab does not capture keyboard shortcuts.
++      child.setAttribute('data-lm-suppress-shortcuts', 'true')
++    }
++
++    const observer = new MutationObserver(() => {
++      if (!target.isConnected) {
++        observer.disconnect()
++        controller.abort()
++        void mounted.dispose()
++      }
++    })
++    observer.observe(document, {childList: true, subtree: true})
++    void mounted.when_disposed.then(() => observer.disconnect())
+   }
+   function get_bokeh(root) {
+     if (root.Bokeh === undefined) {
+diff --git a/panel/_templates/pyodide_handler.js b/panel/_templates/pyodide_handler.js
+index f8774bb129b62c9d4baa7ee0a5a9cde7e22a228f..840078e45d15668eda8e07c96c8109282ba3eb04 100644
+--- a/panel/_templates/pyodide_handler.js
++++ b/panel/_templates/pyodide_handler.js
+@@ -69,8 +69,11 @@ pyodideWorker.onmessage = async (event) => {
+     render_items[0]['roots'] = roots
+     render_items[0]['root_ids'] = root_ids
+ 
+-    // Clear pre-rendered contents
+-    Bokeh.index.roots.map((v) => v.remove())
++    // Clear the previously owned render before replacing it.
++    if (pyodideWorker.bokehMount != null) {
++      await pyodideWorker.bokehMount.dispose()
++      pyodideWorker.bokehMount = null
++    }
+ 
+     // Embed content
+     const [views] = await Bokeh.embed.embed_items(docs_json, render_items)
+diff --git a/panel/io/artifact.py b/panel/io/artifact.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..12828e8992f88f001c0c1b4168baa2487e5222a6
+--- /dev/null
++++ b/panel/io/artifact.py
+@@ -0,0 +1,145 @@
++"""Panel-owned adapters for Bokeh 4.0 embedding artifacts."""
++from __future__ import annotations
++
++import typing as t
++
++from dataclasses import dataclass
++
++from .resources import BASE_TEMPLATE, _env
++
++if t.TYPE_CHECKING:
++    from collections.abc import Mapping
++
++    from bokeh.embed import EmbedArtifact
++    from bokeh.embed.bundle import Bundle
++    from bokeh.model import Model
++    from jinja2 import Template
++
++
++_ARTIFACT_MACROS = _env.from_string(
++    "{% macro embed(obj) -%}{{ obj.html | safe }}{%- endmacro %}"
++)
++
++
++@dataclass(frozen=True)
++class ArtifactTemplateRoot:
++    """A template root carrying Panel model metadata and Bokeh mount HTML."""
++
++    key: str
++    model: Model | None
++    html: str
++
++    @property
++    def elementid(self) -> str:
++        return self.key
++
++    @property
++    def id(self) -> str:
++        return self.model.id if self.model is not None else self.key
++
++    @property
++    def name(self) -> str:
++        return self.model.name if self.model is not None else self.key
++
++    @property
++    def tags(self) -> list[t.Any]:
++        return self.model.tags if self.model is not None else []
++
++
++@dataclass(frozen=True)
++class ArtifactTemplateRoots:
++    """Sequence and name lookup used by Panel's built-in templates."""
++
++    values: tuple[ArtifactTemplateRoot, ...]
++
++    def __iter__(self):
++        return iter(self.values)
++
++    def __len__(self) -> int:
++        return len(self.values)
++
++    def __getitem__(self, key: int | str) -> ArtifactTemplateRoot:
++        if isinstance(key, int):
++            return self.values[key]
++        for root in self.values:
++            if root.name == key:
++                return root
++        raise ValueError(f"root with {key!r} name not found")
++
++    def __getattr__(self, key: str) -> ArtifactTemplateRoot:
++        return self[key]
++
++
++@dataclass(frozen=True)
++class ArtifactTemplateDocument:
++    """The small document shape consumed by Panel's existing templates."""
++
++    roots: ArtifactTemplateRoots
++    elementid: None = None
++
++
++def render_artifact_page(
++    artifact: EmbedArtifact,
++    models: Mapping[str, Model],
++    bundle: Bundle | tuple[str, str],
++    title: str,
++    *,
++    template: Template | str | None = BASE_TEMPLATE,
++    template_variables: Mapping[str, t.Any] | None = None,
++    base_template: Template = BASE_TEMPLATE,
++) -> str:
++    """Render a Bokeh artifact through Panel's richer template context.
++
++    Bokeh owns artifact serialization and keyed mount declarations. Panel owns
++    its template metadata and its resource bundle, including JavaScript
++    modules, configured raw CSS, and extension ordering.
++    """
++    fragment = artifact.fragment(resources="none")
++    mounts = {mount.key: mount for mount in fragment.mounts}
++    artifact_keys = [root.key for root in artifact.roots]
++    if artifact_keys:
++        if set(artifact_keys) != set(models) or set(artifact_keys) != set(mounts):
++            raise ValueError("Panel artifact models, roots, and mounts must have identical logical keys")
++        root_values = tuple(
++            ArtifactTemplateRoot(key, models[key], mounts[key].html)
++            for key in artifact_keys
++        )
++    else:
++        if models or set(mounts) != {"*"}:
++            raise ValueError("a rootless server artifact must expose exactly its wildcard mount")
++        root_values = (ArtifactTemplateRoot("*", None, mounts["*"].html),)
++    roots = ArtifactTemplateRoots(root_values)
++    doc = ArtifactTemplateDocument(roots)
++    bokeh_js, bokeh_css = bundle
++    context = dict(template_variables or {})
++    context.update(
++        title=title,
++        bokeh_js=bokeh_js,
++        bokeh_css=bokeh_css,
++        plot_script=fragment.script,
++        plot_div="\n".join(root.html for root in root_values),
++        artifact=artifact,
++        artifact_mounts=fragment.mounts,
++        artifact_fragment=fragment.html,
++        docs=[doc],
++        doc=doc,
++        roots=roots,
++        base=base_template,
++        macros=_ARTIFACT_MACROS,
++    )
++
++    if template is None:
++        renderer = base_template
++    elif isinstance(template, str):
++        renderer = _env.from_string("{% extends base %}\n" + template)
++    else:
++        renderer = template
++    return renderer.render(context)
++
++
++__all__ = (
++    "ArtifactTemplateDocument",
++    "ArtifactTemplateRoot",
++    "ArtifactTemplateRoots",
++    "render_artifact_page",
++)
+diff --git a/panel/io/convert.py b/panel/io/convert.py
+index a87b5888cf403f1b5fc5948744a31a8db9259d60..8198f192a4b89dca77ee67cbb08d0a09d522ed61 100644
+--- a/panel/io/convert.py
++++ b/panel/io/convert.py
+@@ -3,39 +3,28 @@ from __future__ import annotations
+ import base64
+ import concurrent.futures
+ import dataclasses
+-import json
+ import os
+ import pathlib
+ import typing as t
+ import uuid
+ 
+-from html import escape
+ from urllib.parse import urlparse
+ from zipfile import ZipFile
+ 
+ import bokeh
+ 
+-from bokeh.application.handlers.code import CodeHandler
+-from bokeh.core.json_encoder import serialize_json
+-from bokeh.core.templates import FILE, MACROS, get_env
+-from bokeh.document import Document
+-from bokeh.embed.elements import script_for_render_items
+-from bokeh.embed.util import RenderItem, standalone_docs_json_and_render_items
+-from bokeh.embed.wrappers import wrap_in_script_tag
+-from bokeh.util.serialization import make_id
++from bokeh.core.templates import FILE
+ from packaging.requirements import Requirement
+ 
+ from .. import __version__, config
+ from ..util import base_version
+-from .application import Application, build_single_handler_application
+-from .document import MockSessionContext
+-from .loading import LOADING_INDICATOR_CSS_CLASS
++from .application import build_single_handler_application
+ from .mime_render import find_requirements
+ from .resources import (
+-    BASE_TEMPLATE, CDN_DIST, CDN_ROOT, DIST_DIR, INDEX_TEMPLATE, Resources,
+-    _env as _pn_env, bundle_resources, loading_css, set_resource_mode,
++    BASE_TEMPLATE, CDN_DIST, CDN_ROOT, DIST_DIR, INDEX_TEMPLATE,
++    _env as _pn_env, loading_css, set_resource_mode,
+ )
+-from .state import set_curdoc, state
++from .state import state
+ 
+ if t.TYPE_CHECKING:
+     from collections.abc import Sequence
+@@ -79,6 +68,14 @@ PWA_IMAGES = [
+ 
+ Runtimes = t.Literal['pyodide', 'pyscript', 'pyodide-worker', 'pyscript-worker']
+ 
++
++def _require_supported_embedding_runtime() -> t.NoReturn:
++    raise RuntimeError(
++        "Panel's WebAssembly conversion pipeline has not yet migrated its worker transport "
++        "from RenderItem to bokeh.embed/v1. Use Panel server or static HTML output until "
++        "the converter sends EmbedArtifact snapshots and owns a BokehMount."
++    )
++
+ PRE = """
+ import asyncio
+ 
+@@ -351,146 +348,7 @@ def script_to_html(
+     compiled: bool
+         Whether to use pre-compiled pyodide bundles.
+     """
+-    # Run script
+-    if hasattr(filename, 'read'):
+-        handler = CodeHandler(source=filename.read(), filename='convert.py')
+-        app_name = f'app-{str(uuid.uuid4())}'
+-        app = Application(handler)
+-    else:
+-        path = pathlib.Path(filename)
+-        app_name = '.'.join(path.name.split('.')[:-1])
+-        app = build_single_handler_application(str(path.absolute()))
+-    document = Document()
+-    document._session_context = lambda: MockSessionContext(document=document)  # type: ignore
+-    with set_curdoc(document):
+-        app.initialize_document(document)
+-        state._on_load(None)
+-    source = app._handlers[0]._runner.source
+-
+-    if not document.roots:
+-        raise RuntimeError(
+-            f'The file {filename} does not publish any Panel contents. '
+-            'Ensure you have marked items as servable or added models to '
+-            'the bokeh document manually.'
+-        )
+-
+-    # Execution
+-    post_code = POST_PYSCRIPT if runtime == 'pyscript' else POST
+-    # Escape javascript-style format strings.
+-    source = source.replace('${', '&#36;{')
+-    code = '\n'.join([PRE, source, post_code])
+-    web_worker = None
+-    if css_resources is None:
+-        css_resources = []
+-    if runtime.startswith('pyscript'):
+-        if js_resources == 'auto':
+-            js_resources = [PYSCRIPT_JS]
+-        if css_resources == 'auto':
+-            css_resources = [PYSCRIPT_CSS, PYSCRIPT_CSS_OVERRIDES]
+-        elif not css_resources:
+-            css_resources = []
+-        pyconfig = json.dumps({
+-            'packages': requirements,
+-            'plugins': ['!error'],
+-            'files': {app_resources: './*'} if app_resources else {},
+-        })
+-        css_resources.append('<style type="text/css">.py-error { display: none; }</style>')
+-        if 'worker' in runtime:
+-            plot_script = f'<script type="py" async worker config=\'{pyconfig}\' src="{app_name}.py"></script>'
+-            web_worker = code
+-        else:
+-            plot_script = f'<script type=\'py\' config=\'{pyconfig}\'>{code}</script>'
+-    else:
+-        if css_resources == 'auto':
+-            css_resources = []
+-        data_archives = f'{repr(app_resources)}' if app_resources else ''
+-        env_spec = ', '.join([repr(req) for req in requirements])
+-        code = code.encode('unicode_escape').decode('utf-8').replace('`', r'\`')
+-        if runtime == 'pyodide-worker':
+-            if js_resources == 'auto':
+-                js_resources = []
+-            worker_handler = WORKER_HANDLER_TEMPLATE.render({
+-                'name': app_name,
+-                'loading_spinner': config.loading_spinner
+-            })
+-            web_worker = WEB_WORKER_TEMPLATE.render({
+-                'PYODIDE_URL': PYODIDE_PYC_URL if compiled else PYODIDE_URL,
+-                'data_archives': data_archives,
+-                'env_spec': env_spec,
+-                'code': code
+-            })
+-            plot_script = wrap_in_script_tag(worker_handler)
+-        else:
+-            if js_resources == 'auto':
+-                js_resources = [PYODIDE_PYC_JS if compiled else PYODIDE_JS]
+-            script_template = _pn_env.from_string(PYODIDE_SCRIPT)
+-            plot_script = script_template.render({
+-                'data_archives': data_archives,
+-                'env_spec': env_spec,
+-                'code': code
+-            })
+-
+-    if prerender:
+-        json_id = make_id()
+-        docs_json, render_items = standalone_docs_json_and_render_items(document)
+-        render_item = render_items[0]
+-        escaped_json = escape(serialize_json(docs_json), quote=False)
+-        plot_script += wrap_in_script_tag(escaped_json, "application/json", json_id)
+-        plot_script += wrap_in_script_tag(script_for_render_items(json_id, render_items))
+-    else:
+-        render_item = RenderItem(
+-            token='',
+-            roots=document.roots,
+-            use_for_title=False
+-        )
+-        render_items = [render_item]
+-
+-    # Prepare template
+-    template = document.template
+-    if template is None:
+-        template = BASE_TEMPLATE
+-    elif isinstance(template, str):
+-        template = get_env().from_string("{% extends base %}\n" + template)
+-
+-    # Collect resources
+-    resources = Resources(mode='inline' if inline else 'cdn')
+-    css_resources += loading_resources(template, inline)
+-    with set_curdoc(document):
+-        bokeh_js, bokeh_css = bundle_resources(document.roots, resources)
+-    extra_js = [INIT_SERVICE_WORKER, bokeh_js] if manifest else [bokeh_js]
+-    bokeh_js = '\n'.join(js_resources+extra_js)
+-    bokeh_css = '\n'.join([bokeh_css]+css_resources)
+-
+-    # Configure template
+-    template_variables = document._template_variables
+-    context = template_variables.copy()
+-    context.update(dict(
+-        title=document.title,
+-        bokeh_js=bokeh_js,
+-        bokeh_css=bokeh_css,
+-        plot_script=plot_script,
+-        docs=render_items,
+-        base=BASE_TEMPLATE,
+-        macros=MACROS,
+-        doc=render_item,
+-        roots=render_item.roots,
+-        manifest=manifest,
+-        dist_url=CDN_DIST
+-    ))
+-
+-    # Render
+-    html = template.render(context)
+-    html = (html
+-        .replace('<body>', f'<body class="{LOADING_INDICATOR_CSS_CLASS} pn-{config.loading_spinner}">')
+-    )
+-    if runtime == 'pyscript-worker':
+-        # pyscript-worker apps must have strict cross-origin policies
+-        html = (html
+-            .replace('<script type="text/javascript"', '<script type="text/javascript" crossorigin="anonymous"')
+-            .replace('<link rel="stylesheet"', '<link rel="stylesheet" crossorigin="anonymous"')
+-            .replace('<link rel="icon"', '<link rel="icon" crossorigin="anonymous"')
+-        )
+-    return html, web_worker
++    _require_supported_embedding_runtime()
+ 
+ 
+ def convert_app(
+@@ -508,6 +366,7 @@ def convert_app(
+     compiled: bool = False,
+     verbose: bool = True,
+ ):
++    _require_supported_embedding_runtime()
+     if dest_path is None:
+         dest_path = pathlib.Path('./')
+     elif not isinstance(dest_path, pathlib.PurePath):
+@@ -694,6 +553,7 @@ def convert_apps(
+     compiled: bool
+         Whether to use the compiled and faster version of Pyodide.
+     """
++    _require_supported_embedding_runtime()
+     if isinstance(apps, (str, os.PathLike)):
+         apps = [apps]
+     if dest_path is None:
+diff --git a/panel/io/embed.py b/panel/io/embed.py
+index 83d5edbcc0d18b336f21039a822a7fee6a6d2611..9fd6f06dad6cf161514596f9794e62d736bc9d62 100644
+--- a/panel/io/embed.py
++++ b/panel/io/embed.py
+@@ -24,14 +24,6 @@ from .state import state
+ #---------------------------------------------------------------------
+ 
+ STATE_JS = """
+-var state = null
+-for (var root of cb_obj.document.roots()) {{
+-  if (root.id == '{id}') {{
+-    state = root;
+-    break;
+-  }}
+-}}
+-if (!state) {{ return; }}
+ state.set_state(cb_obj, {js_getter})
+ """
+ 
+@@ -292,8 +284,9 @@ def embed_state(panel, model, doc, max_states=1000, max_opts=3,
+             merged[widget.label][1].append(w_model)
+             continue
+ 
+-        js_callback = CustomJS(code=STATE_JS.format(
+-            id=state_model.ref['id'], js_getter=js_getter))
++        js_callback = CustomJS(
++            args={'state': state_model}, code=STATE_JS.format(js_getter=js_getter)
++        )
+         widget_data.append(([w], [w_model], vals, getter, js_callback, on_change))
+         merged[widget.label] = widget_data[-1]
+ 
+diff --git a/panel/io/notebook.py b/panel/io/notebook.py
+index 7c897e9ebb5e1a3c787acbe6c637169c6ed6b877..f5c6cbb76fa619ba517fbe81226e093ec3fd5d0c 100644
+--- a/panel/io/notebook.py
++++ b/panel/io/notebook.py
+@@ -13,23 +13,16 @@ import warnings
+ 
+ from contextlib import contextmanager
+ from functools import partial
+-from html import escape
+ 
+ import bokeh
+-import bokeh.embed.notebook
+ 
+-from bokeh.core.json_encoder import serialize_json
+-from bokeh.core.templates import MACROS
+ from bokeh.document import Document
+ from bokeh.embed import server_document
+-from bokeh.embed.elements import div_for_render_item, script_for_render_items
+-from bokeh.embed.util import standalone_docs_json_and_render_items
+-from bokeh.embed.wrappers import wrap_in_script_tag
++from bokeh.embed.notebook import notebook_content
+ from bokeh.models import (
+     ImportedStyleSheet, InlineStyleSheet, Model, UIElement,
+ )
+ from bokeh.resources import CDN, INLINE
+-from bokeh.util.serialization import make_id
+ from param.display import (
+     register_display_accessor, unregister_display_accessor,
+ )
+@@ -39,6 +32,7 @@ from pyviz_comms import (
+ )
+ 
+ from ..util import _descendents
++from .artifact import render_artifact_page
+ from .embed import embed_state
+ from .model import add_to_doc, diff
+ from .resources import (
+@@ -140,49 +134,17 @@ def _autoload_js(
+         version = bokeh.__version__
+     )
+ 
+-def html_for_render_items(docs_json, render_items, template=None, template_variables={}):
+-    json_id = make_id()
+-    json = escape(serialize_json(docs_json), quote=False)
+-    json = wrap_in_script_tag(json, "application/json", json_id)
+-
+-    script = wrap_in_script_tag(script_for_render_items(json_id, render_items))
+-
+-    context = template_variables.copy()
+-
+-    context.update(dict(
+-        title = '',
+-        plot_script = json + script,
+-        docs = render_items,
+-        base = NB_TEMPLATE_BASE,
+-        macros = MACROS,
+-    ))
+-
+-    if len(render_items) == 1:
+-        context["doc"] = context["docs"][0]
+-        context["roots"] = context["doc"].roots
+-
+-    if template is None:
+-        template = NB_TEMPLATE_BASE
+-    elif isinstance(template, str):
+-        template = _env.from_string("{% extends base %}\n" + template)
+-
+-    return template.render(context)
+-
+ def render_template(
+     document: Document, comm: Comm | None = None, manager: CommManager | None = None
+ ) -> tuple[dict[str, str], dict[str, dict[str, str]]]:
+     ref = document.roots[0].ref['id']
+-    (docs_json, render_items) = standalone_docs_json_and_render_items(document, suppress_callback_warning=True)
+-
+-    # We do not want the CommManager to appear in the roots because
+-    # the custom template may not reference it
+-    if manager:
+-        item = render_items[0]
+-        item.roots._roots = dict(list(item.roots._roots.items())[:-1])
+-
+-    html = html_for_render_items(
+-        docs_json, render_items, template=document.template,
+-        template_variables=document.template_variables
++    roots = document.roots[:-1] if manager else document.roots
++    keyed_roots = {root.id: root for root in roots}
++    artifact, _ = notebook_content(keyed_roots, live=True)
++    html = render_artifact_page(
++        artifact, keyed_roots, ("", ""), title="", template=document.template,
++        template_variables=document.template_variables,
++        base_template=NB_TEMPLATE_BASE,
+     )
+     return ({'text/html': html, EXEC_MIME: ''}, {EXEC_MIME: {'id': ref}})
+ 
+@@ -202,9 +164,8 @@ def render_model(
+         if model.document:
+             model.document._template_variables['dist_url'] = dist_url
+ 
+-    (docs_json, [render_item]) = standalone_docs_json_and_render_items([model], suppress_callback_warning=True)
+-    div = div_for_render_item(render_item)
+-    render_json = render_item.to_json()
++    artifact, fragment = notebook_content(model, live=True)
++    [mount] = fragment.mounts
+     requirements = [pnext._globals[ext] for ext in pnext._loaded_extensions
+                     if ext in pnext._globals]
+ 
+@@ -213,15 +174,15 @@ def render_model(
+         ipywidget &= "PANEL_IPYWIDGET" in os.environ
+ 
+     script = DOC_NB_JS.render(
+-        docs_json=serialize_json(docs_json),
+-        render_items=serialize_json([render_json]),
++        artifact=artifact.to_json_string(),
++        artifact_fingerprint=artifact.fingerprint,
++        root_key=mount.key,
+         requirements=requirements,
+         ipywidget=ipywidget
+     )
+-    bokeh_script, bokeh_div = script, div
+-    html = f"<div id='{target}'>{bokeh_div}</div>"
++    html = f"<div id='{target}'>{mount.html}</div>"
+ 
+-    data = {'text/html': html, 'application/javascript': bokeh_script}
++    data = {'text/html': html, 'application/javascript': script}
+     return ({'text/html': mimebundle_to_html(data), EXEC_MIME: ''},
+             {EXEC_MIME: {'id': target}})
+ 
+diff --git a/panel/io/pyodide.py b/panel/io/pyodide.py
+index ba39ac7781832ada471024fca7547bffa5d4a75a..4f3df88d60a2701794adf2658b5684b807a511dc 100644
+--- a/panel/io/pyodide.py
++++ b/panel/io/pyodide.py
+@@ -91,6 +91,14 @@ except Exception:
+ DEBOUNCE = 50
+ TIMEOUT = 500
+ 
++
++def _require_supported_embedding_runtime() -> None:
++    raise RuntimeError(
++        "Panel's Pyodide transport has not yet migrated from JsonItem/RenderItem to "
++        "bokeh.embed/v1. The browser side must own a BokehMount and link patches to "
++        "mount.document before this workflow can support Bokeh 4.0."
++    )
++
+ #---------------------------------------------------------------------
+ # Private API
+ #---------------------------------------------------------------------
+@@ -160,6 +168,7 @@ def _doc_json(doc: Document, root_els=None) -> tuple[str, str, str]:
+     render_items: str
+     root_ids: str
+     """
++    _require_supported_embedding_runtime()
+     docs_json, render_items = standalone_docs_json_and_render_items(
+         doc.roots, suppress_callback_warning=True
+     )
+@@ -194,6 +203,7 @@ def _model_json(viewable: Viewable | TemplateBase, target: str) -> tuple[Documen
+     model_json: str
+         The serialized JSON representation of the Bokeh Model.
+     """
++    _require_supported_embedding_runtime()
+     doc = Document()
+     doc.hold()
+     viewable.server_doc(doc=doc)
+@@ -427,7 +437,7 @@ def _link_docs_worker(doc: Document, dispatch_fn: t.Any, msg_id: str | None = No
+     doc.on_event('document_ready', functools.partial(state._schedule_on_load, doc))
+     doc.callbacks.trigger_event(DocumentReady())
+ 
+-async def _link_model(ref: str, doc: Document) -> None:
++async def _link_model(ref: str, doc: Document, target: str) -> None:
+     """
+     Links a rendered Bokeh model on the frontend to a Python Document
+     in Python.
+@@ -438,15 +448,18 @@ async def _link_model(ref: str, doc: Document) -> None:
+         The ID of the rendered bokeh Model
+     doc: bokeh.document.Document
+         The bokeh Document to sync the rendered Model with.
++    target: str
++        The DOM target that owns the Bokeh mount.
+     """
+-    rendered = js.window.Bokeh.index.object_keys()
+-    if ref not in rendered:
+-        await asyncio.sleep(0.1)
+-        await _link_model(ref, doc)
+-        return
+-    views = js.window.Bokeh.index.object_values()
+-    view = views[rendered.indexOf(ref)]
+-    _link_docs(doc, view.model.document)
++    target_el = js.document.getElementById(target)
++    mount = await js.window.Bokeh.when_mounted(target_el)
++    model = mount.document.get_model_by_id(ref)
++    if model is None:
++        raise RuntimeError(f"Bokeh mount does not contain model {ref!r}")
++    view = mount.view_lookup.find_one(model)
++    if view is None:
++        raise RuntimeError(f"Bokeh mount does not contain a view for model {ref!r}")
++    _link_docs(doc, mount.document)
+ 
+ def _get_pyscript_target():
+     if '__main__' in sys.modules and hasattr(sys.modules['__main__'], 'get_current_display_target'):
+@@ -482,6 +495,7 @@ def render_script(obj: t.Any, target: ID) -> str:
+     target: str
+         Target ID of the DOM node to render the object into.
+     """
++    _require_supported_embedding_runtime()
+     from js import document
+ 
+     from ..pane import panel as as_panel
+@@ -495,7 +509,7 @@ def render_script(obj: t.Any, target: ID) -> str:
+         render_item.roots._roots[root] = target
+     document.getElementById(target).classList.add('bk-root')
+     script = script_for_render_items(docs_json, [render_item])
+-    task = asyncio.create_task(_link_model(doc.roots[0].ref['id'], doc))
++    task = asyncio.create_task(_link_model(doc.roots[0].ref['id'], doc, target))
+     _tasks.add(task)
+     task.add_done_callback(_tasks.discard)
+     return wrap_in_script_tag(script)
+diff --git a/panel/io/resources.py b/panel/io/resources.py
+index 29ec21b7594979d891259f83139f2138d8e34ea2..61edb5db473f76b36600f2a4037cfc3f36fc0ff5 100644
+--- a/panel/io/resources.py
++++ b/panel/io/resources.py
+@@ -488,6 +488,8 @@ def bundle_resources(
+ 
+     if js_resources:
+         js_resources = js_resources.clone()
++        if "bokeh-api" not in js_resources.components:
++            js_resources.components.append("bokeh-api")
+         if not use_mathjax and "bokeh-mathjax" in js_resources.components:
+             js_resources.components.remove("bokeh-mathjax")
+         if reloading:
+diff --git a/panel/io/save.py b/panel/io/save.py
+index fcce082a3b3ce63535c77214ccc66ff944a480d5..a87130f522d6b09429bebd5dac19f57c80a0cea3 100644
+--- a/panel/io/save.py
++++ b/panel/io/save.py
+@@ -9,10 +9,8 @@ import typing as t
+ import bokeh
+ 
+ from bokeh.document.document import Document
+-from bokeh.embed.elements import html_page_for_render_items
+-from bokeh.embed.util import (
+-    OutputDocumentFor, standalone_docs_json_and_render_items,
+-)
++from bokeh.embed import embed as bokeh_embed
++from bokeh.embed.notebook import notebook_content
+ from bokeh.io.export import get_screenshot_as_png
+ from bokeh.model import Model
+ from bokeh.models import UIElement
+@@ -20,6 +18,8 @@ from bokeh.resources import CDN, INLINE, Resources as BkResources
+ from pyviz_comms import Comm
+ 
+ from ..config import config
++from ..models.state import State
++from .artifact import render_artifact_page
+ from .embed import embed_state
+ from .model import add_to_doc
+ from .resources import (
+@@ -40,27 +40,6 @@ if t.TYPE_CHECKING:
+     from ..viewable import Viewable
+     from .resources import MODES
+ 
+-#---------------------------------------------------------------------
+-# Private API
+-#---------------------------------------------------------------------
+-
+-_WAIT_SCRIPT = """
+-// add private window prop to check that render is complete
+-window._bokeh_render_complete = false;
+-function done() {
+-  setTimeout(() => { window._bokeh_render_complete = true; }, 500);
+-}
+-
+-var doc = Bokeh.documents[0];
+-
+-if (doc.is_idle)
+-  done();
+-else
+-  doc.idle.connect(done);
+-"""
+-
+-bokeh.io.export._WAIT_SCRIPT = _WAIT_SCRIPT
+-
+ def save_png(
+     model: UIElement | Document,
+     filename: str | os.PathLike | t.IO,
+@@ -163,18 +142,29 @@ def file_html(
+     else:
+         models_seq = models
+ 
++    template_variables = dict(template_variables)
+     template_variables['dist_url'] = CDN_DIST
+ 
+-    with OutputDocumentFor(models_seq, apply_theme=theme, always_new=_always_new):
+-        (docs_json, render_items) = standalone_docs_json_and_render_items(
+-            models_seq, suppress_callback_warning=True
+-        )
+-        title = _title_from_models(models_seq, title or 'Panel Application')
+-        bundle = bundle_resources(models_seq, resources)
+-        return html_page_for_render_items(
+-            bundle, docs_json, render_items, title=title, template=template,
+-            template_variables=template_variables
++    protocol_ids = any(
++        isinstance(ref, State) for model in models_seq for ref in model.references()
++    )
++    artifact_input = models if isinstance(models, Document) else models_seq
++    if protocol_ids:
++        artifact, _ = notebook_content(artifact_input, theme=theme, live=True)
++    else:
++        artifact = bokeh_embed(
++            artifact_input, theme=theme, callback_policy="suppress",
++            _always_new=_always_new,
+         )
++    keyed_models = {
++        root.key: model for root, model in zip(artifact.roots, models_seq)
++    }
++    title = _title_from_models(models_seq, title or 'Panel Application')
++    bundle = bundle_resources(models_seq, resources)
++    return render_artifact_page(
++        artifact, keyed_models, bundle, title=title, template=template,
++        template_variables=template_variables
++    )
+ 
+ #---------------------------------------------------------------------
+ # Public API
+diff --git a/panel/io/server.py b/panel/io/server.py
+index 5a90d3f0d796a2e4bce3f977258f3ecc0e67d91a..cc3768a487caee9e6b76697e60c1d477a18c9307 100644
+--- a/panel/io/server.py
++++ b/panel/io/server.py
+@@ -19,7 +19,6 @@ import typing as t
+ import uuid
+ 
+ from functools import partial, wraps
+-from html import escape
+ from urllib.parse import urlparse
+ 
+ import bokeh
+@@ -28,27 +27,27 @@ import tornado
+ 
+ # Bokeh imports
+ from bokeh.core.json_encoder import serialize_json
+-from bokeh.core.templates import AUTOLOAD_JS, FILE, MACROS
++from bokeh.core.templates import AUTOLOAD_JS, FILE
+ from bokeh.core.validation import silence
+ from bokeh.core.validation.warnings import EMPTY_LAYOUT
+ from bokeh.embed.bundle import Script
+-from bokeh.embed.elements import script_for_render_items
+-from bokeh.embed.util import RenderItem
+-from bokeh.embed.wrappers import wrap_in_script_tag
++from bokeh.embed import embed_server
++from bokeh.server.util import check_allowlist
+ from bokeh.server.contexts import _RequestProxy as BkRequestProxy
+ from bokeh.server.server import Server as BokehServer
+ from bokeh.server.urls import per_app_patterns, toplevel_patterns
+-from bokeh.server.views.autoload_js_handler import (
+-    AutoloadJsHandler as BkAutoloadJsHandler,
+-)
+ from bokeh.server.views.doc_handler import DocHandler as BkDocHandler
++from bokeh.server.views.embed_json_handler import (
++    EmbedJsonHandler as BkEmbedJsonHandler,
++)
+ from bokeh.server.views.metadata_handler import (
+     MetadataHandler as BkMetadataHandler,
+ )
+ from bokeh.server.views.root_handler import RootHandler as BkRootHandler
++from bokeh.server.views.session_handler import SessionHandler as BkSessionHandler
+ from bokeh.server.views.static_handler import StaticHandler
+ from bokeh.server.views.ws import WSHandler as BkWSHandler
+-from bokeh.util.serialization import make_id
++from bokeh.settings import settings as bk_settings
+ from bokeh.util.token import (
+     check_token_signature, generate_jwt_token, generate_session_id,
+     get_session_id, get_token_payload,
+@@ -64,6 +63,7 @@ from tornado.wsgi import WSGIContainer
+ from ..config import config
+ from ..util import HTML_SANITIZER, edit_readonly, fullpath
+ from ..util.warnings import warn
++from .artifact import render_artifact_page
+ from .application import build_applications
+ from .document import (  # noqa
+     _cleanup_doc, init_doc, unlocked, with_lock,
+@@ -90,8 +90,6 @@ if t.TYPE_CHECKING:
+         Application as BkApplication, SessionContext,
+     )
+     from bokeh.core.types import ID
+-    from bokeh.document.document import DocJson
+-    from bokeh.embed.bundle import Bundle
+     from bokeh.server.session import ServerSession
+     from jinja2 import Template
+ 
+@@ -288,72 +286,6 @@ state._on_session_created_internal.append(_initialize_session_info)
+ # Bokeh patches
+ #---------------------------------------------------------------------
+ 
+-def html_page_for_render_items(
+-    bundle: Bundle | tuple[str, str], docs_json: dict[ID, DocJson],
+-    render_items: list[RenderItem], title: str, template: Template | str | None = None,
+-    template_variables: dict[str, t.Any] = {}
+-) -> str:
+-    """
+-    Render an HTML page from a template and Bokeh render items.
+-
+-    Parameters
+-    ----------
+-    bundle (tuple):
+-        A tuple containing (bokehjs, bokehcss)
+-    docs_json (JSON-like):
+-        Serialized Bokeh Document
+-    render_items (RenderItems)
+-        Specific items to render from the document and where
+-    title (str or None)
+-        A title for the HTML page. If None, DEFAULT_TITLE is used
+-    template (str or Template or None, optional) :
+-        A Template to be used for the HTML page. If None, FILE is used.
+-    template_variables (dict, optional):
+-        Any Additional variables to pass to the template
+-
+-    Returns
+-    -------
+-    str
+-    """
+-    if title is None:
+-        title = DEFAULT_TITLE
+-
+-    bokeh_js, bokeh_css = bundle
+-
+-    json_id = make_id()
+-    json = escape(serialize_json(docs_json), quote=False)
+-    json = wrap_in_script_tag(json, "application/json", json_id)
+-
+-    script = wrap_in_script_tag(script_for_render_items(json_id, render_items))
+-
+-    context = template_variables.copy()
+-
+-    context.update(dict(
+-        title = title,
+-        bokeh_js = bokeh_js,
+-        bokeh_css = bokeh_css,
+-        plot_script = json + script,
+-        docs = render_items,
+-        base = BASE_TEMPLATE,
+-        macros = MACROS,
+-    ))
+-    if "app_favicon" not in context:
+-        context["app_favicon"] = (f"{state.rel_path}/" if state.rel_path else "./") + "favicon.ico"
+-
+-    if len(render_items) == 1:
+-        context["doc"] = context["docs"][0]
+-        context["roots"] = context["doc"].roots
+-
+-    if template is None:
+-        tmpl = BASE_TEMPLATE
+-    elif isinstance(template, str):
+-        tmpl = _env.from_string("{% extends base %}\n" + template)
+-    else:
+-        tmpl = template
+-
+-    html = tmpl.render(context)
+-    return html
+-
+ def server_html_page_for_session(
+     session: ServerSession,
+     resources: Resources,
+@@ -376,23 +308,28 @@ def server_html_page_for_session(
+     for root in doc.roots:
+         patch_model_css(root, dist_url=dist_url)
+ 
+-    render_item = RenderItem(
+-        token = token or session.token,
+-        roots = doc.roots,
+-        use_for_title = False,
+-    )
+-
+     if template_variables is None:
+         template_variables = {}
++    else:
++        template_variables = dict(template_variables)
++    if "app_favicon" not in template_variables:
++        template_variables["app_favicon"] = (
++            (f"{state.rel_path}/" if state.rel_path else "./") + "favicon.ico"
++        )
+ 
+     if template is FILE:
+         template = BASE_TEMPLATE
+ 
+     with set_curdoc(doc):
+         bundle = bundle_resources(doc.roots, resources)
+-        html = html_page_for_render_items(
+-            bundle, {}, [render_item], title, template=template,
+-            template_variables=template_variables
++        keyed_roots = {root.id: root for root in doc.roots}
++        artifact = embed_server(
++            ".", token=token or session.token, roots=keyed_roots,
++            metadata={"panel_template": True},
++        )
++        html = render_artifact_page(
++            artifact, keyed_roots, bundle, title, template=template,
++            template_variables=template_variables,
+         )
+         if config.global_loading_spinner:
+             html = html.replace(
+@@ -405,8 +342,49 @@ def autoload_js_script(doc, resources, token, element_id, app_path, absolute_url
+     resources = Resources.from_bokeh(resources, absolute=absolute)
+     bundle = bundle_resources(doc.roots, resources)
+ 
+-    render_items = [RenderItem(token=token, elementid=element_id, use_for_title=False)]
+-    bundle.add(Script(script_for_render_items({}, render_items, app_path=app_path, absolute_url=absolute_url)))
++    keyed_roots = {root.id: root for root in doc.roots}
++    artifact = embed_server(
++        absolute_url or app_path or ".",
++        token=token,
++        roots=keyed_roots,
++        relative_urls=absolute_url is None,
++        metadata={"panel_autoload": True},
++    )
++    payload = artifact.to_json_string()
++    target_id = serialize_json(element_id)
++    script = f"""
++void (async () => {{
++  const target = document.getElementById({target_id});
++  if (target == null) {{
++    throw new Error("Panel could not find its autoload target");
++  }}
++  const controller = new AbortController();
++  const handle = Bokeh.mount({payload}, target, {{
++    resources: "none",
++    signal: controller.signal,
++    on_error(error) {{
++      target.dataset.bokehError = error.kind;
++      console.error("Panel failed to mount a Bokeh server artifact", error);
++    }},
++  }});
++  const mounted = await Bokeh.when_mounted(target, {{signal: controller.signal}});
++  if (mounted !== handle) {{
++    throw new Error("Panel discovered a mount other than the one it created");
++  }}
++  await mounted.ready;
++  target.dataset.bokehReady = "true";
++  const observer = new MutationObserver(() => {{
++    if (!target.isConnected) {{
++      observer.disconnect();
++      controller.abort();
++      void mounted.dispose();
++    }}
++  }});
++  observer.observe(document, {{childList: true, subtree: true}});
++  void mounted.when_disposed.then(() => observer.disconnect());
++}})();
++"""
++    bundle.add(Script(script))
+ 
+     return AUTOLOAD_JS.render(bundle=bundle, elementid=element_id)
+ 
+@@ -714,13 +692,32 @@ class DocHandler(LoginUrlMixin, BkDocHandler):
+         self.set_header("Content-Type", 'text/html')
+         self.write(page)
+ 
+-# Patch Bokeh Autoload handler
+-class AutoloadJsHandler(BkAutoloadJsHandler):
+-    ''' Implements a custom Tornado handler for the autoload JS chunk
++# Panel-owned compatibility endpoint; Bokeh 4 no longer exposes autoload.js.
++class AutoloadJsHandler(BkSessionHandler):
++    ''' Serve Panel's artifact-based compatibility autoload response.
+ 
+     '''
+ 
++    def set_default_headers(self) -> None:
++        self.set_header("Access-Control-Allow-Origin", "*")
++        self.set_header("Access-Control-Allow-Headers", "*")
++        self.set_header("Access-Control-Allow-Credentials", "true")
++
++    def _allow_websocket_origin(self) -> None:
++        if "Origin" not in self.request.headers:
++            return
++        origin = self.request.headers["Origin"]
++        origin_host = urlparse(origin).netloc.lower()
++        allowed_hosts = list(self.application.websocket_origins)
++        if bk_settings.allowed_ws_origin():
++            allowed_hosts = bk_settings.allowed_ws_origin()
++        if check_allowlist(origin_host, allowed_hosts):
++            self.set_header("Access-Control-Allow-Origin", origin)
++            self.set_header("Vary", "Origin")
++
++    @authenticated
+     async def get(self, *args, **kwargs) -> None:
++        self._allow_websocket_origin()
+         _set_request_route_context(self, *args, suffix='/autoload.js', **kwargs)
+         element_id = self.get_argument("bokeh-autoload-element", default=None)
+         if not element_id:
+@@ -735,7 +732,9 @@ class AutoloadJsHandler(BkAutoloadJsHandler):
+         else:
+             server_url = None
+ 
+-        session = await self.get_session()  # type: ignore
++        session = await self.get_session()
++        if session is None:
++            raise HTTPError(status_code=403, reason="Invalid token or session ID")
+         with set_curdoc(session.document):
+             resources = Resources.from_bokeh(
+                 self.application.resources(server_url), absolute=True
+@@ -748,6 +747,10 @@ class AutoloadJsHandler(BkAutoloadJsHandler):
+         self.set_header("Content-Type", 'application/javascript')
+         self.write(js)
+ 
++    async def options(self, *args, **kwargs) -> None:
++        self.set_header('Access-Control-Allow-Methods', 'PUT, GET, OPTIONS')
++        self._allow_websocket_origin()
++
+ 
+ class WSHandler(BkWSHandler):
+ 
+@@ -795,9 +798,11 @@ class WSHandler(BkWSHandler):
+ 
+ 
+ _metadata_handler = per_app_patterns[2][1] if len(per_app_patterns) > 2 else BkMetadataHandler
++_embed_json_handler = per_app_patterns[3][1] if len(per_app_patterns) > 3 else BkEmbedJsonHandler
+ per_app_patterns[:] = [
+     (r'/ws', WSHandler),
+     (r'/metadata', _metadata_handler),
++    (r'/embed.json', _embed_json_handler),
+     (r'/autoload.js', AutoloadJsHandler),
+     (r'/?', DocHandler),
+ ]
+diff --git a/panel/io/state.py b/panel/io/state.py
+index dabd10eff2b4f883cd5070fec4842d6bce0716a2..f8f871a2069daead5f4fa49dfb74b378a7e38aaf 100644
+--- a/panel/io/state.py
++++ b/panel/io/state.py
+@@ -253,9 +253,14 @@ class _state(param.Parameterized):
+     def _ioloop(self) -> IOLoop | asyncio.AbstractEventLoop:
+         if state._is_pyodide:
+             return asyncio.get_running_loop()
+-        else:
+-            from tornado.ioloop import IOLoop
+-            return IOLoop.current()
++        doc = self.curdoc
++        if doc is not None and doc.session_context is not None:
++            server_context = doc.session_context.server_context
++            application_context = getattr(server_context, 'application_context', None)
++            if application_context is not None and application_context.io_loop is not None:
++                return application_context.io_loop
++        from tornado.ioloop import IOLoop
++        return IOLoop.current()
+ 
+     @property
+     def _extensions(self):
+diff --git a/panel/models/anywidget_component.ts b/panel/models/anywidget_component.ts
+index 564dc35e8c87dbc9364eec4c7fdf813461e1f259..abc68ed579739a6d8861ec470280a0e9f7dd16fe 100644
+--- a/panel/models/anywidget_component.ts
++++ b/panel/models/anywidget_component.ts
+@@ -164,10 +164,7 @@ export class AnyWidgetComponent extends ReactiveESM {
+ 
+   protected override _render_code(): string {
+     return `
+-function render(id) {
+-  const view = Bokeh.index.find_one_by_id(id)
+-  if (!view) { return }
+-
++function render(view) {
+   const out = Promise.resolve(view.render_fn({
+     view, model: view.adapter, data: view.model.data, el: view.container
+   }) || null)
+diff --git a/panel/models/button.ts b/panel/models/button.ts
+index 9021e22d38ffd2fefbd7aef183cb0ff2c46f2715..55deceec1854aa7715f7efc09bb694b59a53bc75 100644
+--- a/panel/models/button.ts
++++ b/panel/models/button.ts
+@@ -1,6 +1,6 @@
+ import type {TooltipView} from "@bokehjs/models/ui/tooltip"
+ import {Tooltip} from "@bokehjs/models/ui/tooltip"
+-import type {IterViews} from "@bokehjs/core/build_views"
++import type {ChildView} from "@bokehjs/core/build_views"
+ import {build_view} from "@bokehjs/core/build_views"
+ import type * as p from "@bokehjs/core/properties"
+ 
+@@ -11,11 +11,8 @@ export class ButtonView extends BkButtonView {
+ 
+   protected tooltip: TooltipView | null
+ 
+-  override *children(): IterViews {
+-    yield* super.children()
+-    if (this.tooltip != null) {
+-      yield this.tooltip
+-    }
++  override _children_views(): ChildView[] {
++    return [...super._children_views(), this.tooltip]
+   }
+ 
+   override connect_signals(): void {
+diff --git a/panel/models/card.ts b/panel/models/card.ts
+index 7095f4cb606ff88378f4cbfef752b72b7037e2e2..b69189a8d39cf9f06e3847d134cf28cb753b74c1 100644
+--- a/panel/models/card.ts
++++ b/panel/models/card.ts
+@@ -77,7 +77,7 @@ export class CardView extends ColumnView {
+       })
+     }
+ 
+-    this._update_stylesheets()
++    this._apply_stylesheets()
+     this._update_css_classes()
+     this._apply_styles()
+     this._apply_visible()
+diff --git a/panel/models/checkbox_button_group.ts b/panel/models/checkbox_button_group.ts
+index 0c8eeef6aa83b9cfc33620f9d2ab750162983a15..1bbe0c3800cc88bf01f56b517d83e68c654e4c73 100644
+--- a/panel/models/checkbox_button_group.ts
++++ b/panel/models/checkbox_button_group.ts
+@@ -1,6 +1,6 @@
+ import type {TooltipView} from "@bokehjs/models/ui/tooltip"
+ import {Tooltip} from "@bokehjs/models/ui/tooltip"
+-import type {IterViews} from "@bokehjs/core/build_views"
++import type {ChildView} from "@bokehjs/core/build_views"
+ import {build_view} from "@bokehjs/core/build_views"
+ import type * as p from "@bokehjs/core/properties"
+ 
+@@ -14,11 +14,8 @@ export class CheckboxButtonGroupView extends bkCheckboxButtonGroupView {
+ 
+   protected tooltip: TooltipView | null
+ 
+-  override *children(): IterViews {
+-    yield* super.children()
+-    if (this.tooltip != null) {
+-      yield this.tooltip
+-    }
++  override _children_views(): ChildView[] {
++    return [...super._children_views(), this.tooltip]
+   }
+ 
+   override connect_signals(): void {
+diff --git a/panel/models/comm_manager.ts b/panel/models/comm_manager.ts
+index 55d8d0cec150b41aec19d474713d8842c1943dbe..40fbaa342a891ed261c759e54b5574187fc2d161 100644
+--- a/panel/models/comm_manager.ts
++++ b/panel/models/comm_manager.ts
+@@ -188,12 +188,7 @@ export class CommManager extends Model {
+         console.warn("Python failed with the following traceback:", metadata.traceback)
+       }
+     } else if (plot_id != null) {
+-      let plot = null
+-      if ((plot_id in this.ns.plot_index) && (this.ns.plot_index[plot_id] != null)) {
+-        plot = this.ns.plot_index[plot_id]
+-      } else if (((window as any).Bokeh !== undefined) && (plot_id in (window as any).Bokeh.index)) {
+-        plot = (window as any).Bokeh.index[plot_id]
+-      }
++      const plot = this.ns.plot_index?.[plot_id] ?? null
+ 
+       if (plot == null) {
+         return
+diff --git a/panel/models/file_download.ts b/panel/models/file_download.ts
+index 993225ad94f2e4d973c7a647ad6e5c4c1ff14a84..0b37ff646a0156f0df13a35f3e38fd748bd12389 100644
+--- a/panel/models/file_download.ts
++++ b/panel/models/file_download.ts
+@@ -1,4 +1,4 @@
+-import type {IterViews} from "@bokehjs/core/build_views"
++import type {ChildView} from "@bokehjs/core/build_views"
+ import {build_view} from "@bokehjs/core/build_views"
+ import {ButtonType} from "@bokehjs/core/enums"
+ import type * as p from "@bokehjs/core/properties"
+@@ -45,11 +45,8 @@ export class FileDownloadView extends InputWidgetView {
+   _prev_href: string | null = ""
+   _prev_download: string | null = ""
+ 
+-  override *children(): IterViews {
+-    yield* super.children()
+-    if (this.icon_view != null) {
+-      yield this.icon_view
+-    }
++  override _children_views(): ChildView[] {
++    return [...super._children_views(), this.icon_view]
+   }
+ 
+   override *controls() {
+diff --git a/panel/models/html.ts b/panel/models/html.ts
+index 38058f8edd7c8cab9de41097c196d6018b1cf0af..06de1271206b5d08fae61b1f0dde2fb8d1c67870 100644
+--- a/panel/models/html.ts
++++ b/panel/models/html.ts
+@@ -190,17 +190,19 @@ export class HTMLView extends PanelMarkupView {
+   override process_tex(): string {
+     const decoded = html_decode(this.model.text)
+     const text = decoded ?? this.model.text
+-    if (this.model.disable_math || !this.contains_tex(text)) {
++    const {MathJax} = this.provider
++    if (this.model.disable_math || MathJax == null || !this.contains_tex(text)) {
+       return text
+     }
+ 
+-    const tex_parts = this.provider.MathJax.find_tex(text)
++    const tex_parts = MathJax.find_tex(text)
+     const processed_text: string[] = []
+ 
+     let last_index: number | undefined = 0
+     for (const part of tex_parts) {
+       processed_text.push(text.slice(last_index, part.start.n))
+-      processed_text.push(this.provider.MathJax.tex2svg(part.math, {display: part.display}).outerHTML)
++      const rendered = MathJax.tex2svg(part.math, {display: part.display})
++      processed_text.push(rendered.outerHTML)
+ 
+       last_index = part.end.n
+     }
+diff --git a/panel/models/icon.ts b/panel/models/icon.ts
+index 3f1acbb439ecabf69dd4efb6ec1fca65a10a0f77..91a74c5185b49ddfa7d4fe747107808c8cdfcf77 100644
+--- a/panel/models/icon.ts
++++ b/panel/models/icon.ts
+@@ -5,7 +5,7 @@ import {TablerIcon} from "@bokehjs/models/ui/icons/tabler_icon"
+ import type {SVGIconView} from "@bokehjs/models/ui/icons/svg_icon"
+ import {SVGIcon} from "@bokehjs/models/ui/icons/svg_icon"
+ import {Control, ControlView} from "@bokehjs/models/widgets/control"
+-import type {IterViews} from "@bokehjs/core/build_views"
++import type {ChildView} from "@bokehjs/core/build_views"
+ import type * as p from "@bokehjs/core/properties"
+ import {div} from "@bokehjs/core/dom"
+ import {build_view} from "@bokehjs/core/build_views"
+@@ -42,12 +42,8 @@ export class ClickableIconView extends ControlView {
+     }
+   }
+ 
+-  override *children(): IterViews {
+-    yield* super.children()
+-    yield this.icon_view
+-    if (this.tooltip != null) {
+-      yield this.tooltip
+-    }
++  override _children_views(): ChildView[] {
++    return [...super._children_views(), this.icon_view, this.tooltip]
+   }
+ 
+   is_svg_icon(icon: string): boolean {
+@@ -121,9 +117,9 @@ export class ClickableIconView extends ControlView {
+     const size = this.calculate_size()
+     const icon_model = (() => {
+       if (is_svg_icon) {
+-        return new SVGIcon({svg: icon, size})
++        return SVGIcon.create({svg: icon, size})
+       } else {
+-        return new TablerIcon({icon_name: icon, size})
++        return TablerIcon.create({icon_name: icon, size})
+       }
+     })()
+     const icon_view = await build_view(icon_model, {parent: this})
+diff --git a/panel/models/layout.ts b/panel/models/layout.ts
+index be62069280f15493652235b5e2e4f16f84671958..79e2be1f223bd12e7dcf1cd6730296224a5273a5 100644
+--- a/panel/models/layout.ts
++++ b/panel/models/layout.ts
+@@ -107,8 +107,8 @@ export class PanelMarkupView extends WidgetView {
+    * Skipped until the view has armed it itself, as the update triggered from
+    * `super.render()` precedes the creation of `this.container`.
+    */
+-  protected override _update_stylesheets(): void {
+-    super._update_stylesheets()
++  protected override _apply_stylesheets(): void {
++    super._apply_stylesheets()
+     if (this._stylesheets_watcher != null) {
+       this.watch_stylesheets()
+     }
+diff --git a/panel/models/mathjax.ts b/panel/models/mathjax.ts
+index 8b7fd827dc53de34e706261b4c7fd9a364214f79..44decc3aa18800722349e927c8e9c1a519cc9e6f 100644
+--- a/panel/models/mathjax.ts
++++ b/panel/models/mathjax.ts
+@@ -15,13 +15,19 @@ export class MathJaxView extends PanelMarkupView {
+   override render(): void {
+     super.render()
+     const text = this.model.text
+-    const tex_parts = this.provider.MathJax.find_tex(text)
++    const {MathJax} = this.provider
++    if (MathJax == null) {
++      this.container.textContent = text
++      return
++    }
++    const tex_parts = MathJax.find_tex(text)
+     const processed_text: string[] = []
+ 
+     let last_index: number | undefined = 0
+     for (const part of tex_parts) {
+       processed_text.push(text.slice(last_index, part.start.n))
+-      processed_text.push(this.provider.MathJax.tex2svg(part.math, {display: part.display}).outerHTML)
++      const rendered = MathJax.tex2svg(part.math, {display: part.display})
++      processed_text.push(rendered.outerHTML)
+       last_index = part.end.n
+     }
+     if (last_index! < text.length) {
+diff --git a/panel/models/radio_button_group.ts b/panel/models/radio_button_group.ts
+index c18c18446660bf23e08e91c6a6f41c6c8db6ddad..a7e98e67b90e1399501f0ed74645974137a55aab 100644
+--- a/panel/models/radio_button_group.ts
++++ b/panel/models/radio_button_group.ts
+@@ -1,6 +1,6 @@
+ import type {TooltipView} from "@bokehjs/models/ui/tooltip"
+ import {Tooltip} from "@bokehjs/models/ui/tooltip"
+-import type {IterViews} from "@bokehjs/core/build_views"
++import type {ChildView} from "@bokehjs/core/build_views"
+ import {build_view} from "@bokehjs/core/build_views"
+ import type * as p from "@bokehjs/core/properties"
+ 
+@@ -14,11 +14,8 @@ export class RadioButtonGroupView extends bkRadioButtonGroupView {
+ 
+   protected tooltip: TooltipView | null
+ 
+-  override *children(): IterViews {
+-    yield* super.children()
+-    if (this.tooltip != null) {
+-      yield this.tooltip
+-    }
++  override _children_views(): ChildView[] {
++    return [...super._children_views(), this.tooltip]
+   }
+ 
+   override connect_signals(): void {
+diff --git a/panel/models/react_component.ts b/panel/models/react_component.ts
+index 2ee30ec2aa98775a26824bc2b17457bcbe873f00..b019c1afe93ba46b91a11f2e6933628633a3d4fc 100644
+--- a/panel/models/react_component.ts
++++ b/panel/models/react_component.ts
+@@ -2,14 +2,12 @@ import type {BuildResult, Options, ViewStorage} from "@bokehjs/core/build_views"
+ import {build_views} from "@bokehjs/core/build_views"
+ import type {HasProps} from "@bokehjs/core/has_props"
+ import type {ViewOf} from "@bokehjs/core/view"
+-import type {StyleSheetLike} from "@bokehjs/core/dom"
+ import type {DOMView} from "@bokehjs/core/dom_view"
+-import {ClassList, InlineStyleSheet, ImportedStyleSheet} from "@bokehjs/core/dom"
++import {ClassList, InlineStyleSheet} from "@bokehjs/core/dom"
+ import type {CSSStyles, CSSStyleSheetDecl} from "@bokehjs/core/css"
+ import type * as p from "@bokehjs/core/properties"
+ import {difference} from "@bokehjs/core/util/array"
+ import {assert} from "@bokehjs/core/util/assert"
+-import {isString} from "@bokehjs/core/util/types"
+ import type {UIElementView} from "@bokehjs/models/ui/ui_element"
+ import type {Transform} from "sucrase"
+ 
+@@ -20,8 +18,8 @@ import {
+ export class HostedStyleSheet extends InlineStyleSheet {
+   host_id: string
+ 
+-  constructor(css?: string | CSSStyleSheetDecl, id?: string, override readonly persistent: boolean = false, host_id: string = "") {
+-    super(css, id, persistent)
++  constructor(css?: string | CSSStyleSheetDecl, id?: string, readonly persistent: boolean = false, host_id: string = "") {
++    super(css, id)
+     this.host_id = host_id
+   }
+ 
+@@ -141,7 +139,7 @@ export class ReactComponentView extends ReactiveESMView {
+         this._resolve_mounted()
+         return
+       }
+-      this.react_root = mod.default.render(this.model.id)
++      this.react_root = mod.default.render(this)
+     }).catch((e: unknown) => {
+       this._resolve_mounted()
+       throw e
+@@ -190,7 +188,7 @@ export class ReactComponentView extends ReactiveESMView {
+       this.react_root.then((root: any) => root && root.unmount())
+       this.flush_scheduled_removals()
+     } else {
+-      this._applied_stylesheets.forEach((stylesheet) => stylesheet.uninstall())
++      this._applied_stylesheets.forEach((stylesheet) => stylesheet.remove())
+       for (const cb of (this._lifecycle_handlers.get("remove") || [])) {
+         cb()
+       }
+@@ -212,8 +210,12 @@ export class ReactComponentView extends ReactiveESMView {
+     return root
+   }
+ 
+-  protected override _apply_stylesheets(stylesheets: StyleSheetLike[]): void {
+-    const resolved_stylesheets = stylesheets.map((style) => isString(style) ? new InlineStyleSheet(style) : style)
++  protected override _apply_stylesheets(): void {
++    for (const element of this._applied_stylesheets) {
++      element.remove()
++    }
++    this._applied_stylesheets = []
++
+     const root_view = this.root_view
+     const target = root_view.shadow_el
+     // When shadow DOM is disabled every component in the tree installs its
+@@ -230,23 +232,25 @@ export class ReactComponentView extends ReactiveESMView {
+         installed_hrefs.add(link.href)
+       }
+     }
+-    resolved_stylesheets.forEach((stylesheet) => {
++    this.resolved_stylesheets.forEach((stylesheet) => {
++      const destination = stylesheet.is_global ? document.head : target
++      const element = stylesheet.to_element()
+       if (!this.use_shadow_dom) {
+         if (stylesheet instanceof InlineStyleSheet) {
+           if (installed_css.has(stylesheet.css)) {
+             return
+           }
+           installed_css.add(stylesheet.css)
+-        } else if (stylesheet instanceof ImportedStyleSheet) {
+-          const {href} = (stylesheet as any).el
++        } else if (element instanceof HTMLLinkElement) {
++          const {href} = element
+           if (installed_hrefs.has(href)) {
+             return
+           }
+           installed_hrefs.add(href)
+         }
+       }
+-      this._applied_stylesheets.push(stylesheet)
+-      stylesheet.install(target)
++      this._applied_stylesheets.push(element)
++      destination.append(element)
+     })
+   }
+ 
+@@ -362,7 +366,7 @@ export class ReactComponentView extends ReactiveESMView {
+ 
+   patch_container(container: HTMLDivElement): void {
+     this.el = this.container = container
+-    this._update_stylesheets()
++    this._apply_stylesheets()
+     this.class_list = new ClassList(this.container.classList)
+     this._apply_html_attributes()
+   }
+@@ -461,12 +465,8 @@ import { CacheProvider } from "@emotion/react"`
+     return `
+ ${import_code}
+ 
+-async function render(id) {
+-  const view = Bokeh.index.find_one_by_id(id)
+-  if (view == null) {
+-    return null
+-  }
+-
++async function render(view) {
++  const id = view.model.id
+   ${bundle_code}
+ 
+   class Child extends React.PureComponent {
+@@ -532,7 +532,7 @@ async function render(id) {
+           view.model.render_module.then(async (mod) => {
+             this.props.parent.flush_scheduled_removals()
+             this.setState(
+-              {rendered: await mod.default.render(view.model.id)},
++              {rendered: await mod.default.render(view)},
+               () => {
+                 this.props.parent.notify_mount(this.props.name, view.model.id)
+                 this.view.r_after_render()
+@@ -554,7 +554,7 @@ async function render(id) {
+         view.patch_container(this.containerRef.current)
+         view.model.render_module.then(async (mod) => {
+           this.setState(
+-            {rendered: await mod.default.render(view.model.id)},
++            {rendered: await mod.default.render(view)},
+             () => {
+               this.props.parent.notify_mount(this.props.name, view.model.id)
+               this.view.r_after_render()
+diff --git a/panel/models/reactive_esm.ts b/panel/models/reactive_esm.ts
+index 7d5f9539ae98fdbeaebeb77681745eb65082457f..fa2088903c91c2c96ba0512746ce85cf9de0435b 100644
+--- a/panel/models/reactive_esm.ts
++++ b/panel/models/reactive_esm.ts
+@@ -354,7 +354,7 @@ export class ReactiveESMView extends HTMLBoxView {
+ 
+   override render(): void {
+     this.empty()
+-    this._update_stylesheets()
++    this._apply_stylesheets()
+     this._update_css_classes()
+     this._apply_styles()
+     this._update_css_variables()
+@@ -444,7 +444,7 @@ export class ReactiveESMView extends HTMLBoxView {
+       (this._lifecycle_handlers.get(lf) || []).splice(0)
+     }
+     this.model.disconnect_watchers(this)
+-    const render_promise = this.model.render_module.then((mod: any) => mod.default.render(this.model.id))
++    const render_promise = this.model.render_module.then((mod: any) => mod.default.render(this))
+     this._await_ready(render_promise)
+   }
+ 
+@@ -884,12 +884,7 @@ export class ReactiveESM extends HTMLBox {
+ 
+   protected _render_code(): string {
+     return `
+-function render(id) {
+-  const view = Bokeh.index.find_one_by_id(id)
+-  if (view == null) {
+-    return null
+-  }
+-
++function render(view) {
+   const output = view.render_fn({
+     view: view, model: view.model_proxy, data: view.model.data, el: view.container
+   })
+diff --git a/panel/models/reactive_html.ts b/panel/models/reactive_html.ts
+index b02e2a10e7dc68b4c1487e5071c9c5b05a16ae19..d972aff253008125584ef6404822866a9e4f459c 100644
+--- a/panel/models/reactive_html.ts
++++ b/panel/models/reactive_html.ts
+@@ -255,7 +255,7 @@ export class ReactiveHTMLView extends HTMLBoxView {
+ 
+   override render(): void {
+     this.empty()
+-    this._update_stylesheets()
++    this._apply_stylesheets()
+     this._update_css_classes()
+     this._apply_styles()
+     this._apply_visible()
+diff --git a/panel/models/tabs.ts b/panel/models/tabs.ts
+index 089717a0a139d3044f792f82e92edc691282f488..cc570a93b54f73431fdfb4132adb4a37630852ac 100644
+--- a/panel/models/tabs.ts
++++ b/panel/models/tabs.ts
+@@ -117,31 +117,6 @@ export class TabsView extends BkTabsView {
+     }
+   }
+ 
+-  override update_active(): void {
+-    const i = this.model.active
+-
+-    const {header_els} = this
+-    for (const el of header_els) {
+-      el.classList.remove(tabs.active)
+-    }
+-
+-    if (i in header_els) {
+-      header_els[i].classList.add(tabs.active)
+-    }
+-
+-    const {child_views} = this
+-    for (const child_view of child_views) {
+-      hide(child_view.el)
+-    }
+-
+-    if (i in child_views) {
+-      const view: any = child_views[i]
+-      show(view.el)
+-      if (view.invalidate_render == null) {
+-        view.invalidate_render()
+-      }
+-    }
+-  }
+ }
+ 
+ export namespace Tabs {
+diff --git a/panel/models/tooltip_icon.ts b/panel/models/tooltip_icon.ts
+index 349c8c156f4d4455448e405b0112dc0aca5ed60a..a45641f5efeaf443ce24fca3e020cbd712671d3f 100644
+--- a/panel/models/tooltip_icon.ts
++++ b/panel/models/tooltip_icon.ts
+@@ -110,7 +110,7 @@ export class TooltipIcon extends LayoutDOM {
+     this.prototype.default_view = TooltipIconView
+ 
+     this.define<TooltipIcon.Props>(({Ref}) => ({
+-      description: [Ref(Tooltip), new Tooltip()],
++      description: [Ref(Tooltip), Tooltip.create()],
+     }))
+   }
+ }
+diff --git a/panel/models/trend.ts b/panel/models/trend.ts
+index ac3b5f1bf89c069c4d83dd98618d31d029668f78..ca6aff8d9774edced64f4ca7975c569da2715282 100644
+--- a/panel/models/trend.ts
++++ b/panel/models/trend.ts
+@@ -68,7 +68,7 @@ export class TrendIndicatorView extends HTMLBoxView {
+   }
+ 
+   private async setPlot() {
+-    this.plot = new Plot({
++    this.plot = Plot.create({
+       background_fill_color: null,
+       border_fill_color: null,
+       outline_line_color: null,
+@@ -79,7 +79,7 @@ export class TrendIndicatorView extends HTMLBoxView {
+ 
+     const source = this.model.source
+     if (this.model.plot_type === "line") {
+-      const line = new Line({
++      const line = Line.create({
+         x: {field: this.model.plot_x},
+         y: {field: this.model.plot_y},
+         line_width: 4,
+@@ -87,7 +87,7 @@ export class TrendIndicatorView extends HTMLBoxView {
+       })
+       this.plot.add_glyph(line, source)
+     } else if (this.model.plot_type === "step") {
+-      const step = new Step({
++      const step = Step.create({
+         x: {field: this.model.plot_x},
+         y: {field: this.model.plot_y},
+         line_width: 3,
+@@ -95,7 +95,7 @@ export class TrendIndicatorView extends HTMLBoxView {
+       })
+       this.plot.add_glyph(step, source)
+     } else if (this.model.plot_type === "area") {
+-      const varea = new VArea({
++      const varea = VArea.create({
+         x: {field: this.model.plot_x},
+         y1: {field: this.model.plot_y},
+         y2: 0,
+@@ -103,7 +103,7 @@ export class TrendIndicatorView extends HTMLBoxView {
+         fill_alpha: 0.5,
+       })
+       this.plot.add_glyph(varea, source)
+-      const line = new Line({
++      const line = Line.create({
+         x: {field: this.model.plot_x},
+         y: {field: this.model.plot_y},
+         line_width: 3,
+@@ -111,7 +111,7 @@ export class TrendIndicatorView extends HTMLBoxView {
+       })
+       this.plot.add_glyph(line, source)
+     } else {
+-      const vbar = new VBar({
++      const vbar = VBar.create({
+         x: {field: this.model.plot_x},
+         top: {field: this.model.plot_y},
+         width: 0.9,
+@@ -254,8 +254,8 @@ export class TrendIndicator extends HTMLBox {
+ 
+     this.define<TrendIndicator.Props>(({Float, Str, Ref}) => ({
+       description:  [ Str,              "" ],
+-      formatter:        [ Ref(TickFormatter), () => new BasicTickFormatter() ],
+-      change_formatter: [ Ref(TickFormatter), () => new NumeralTickFormatter() ],
++      formatter:        [ Ref(TickFormatter), () => BasicTickFormatter.create() ],
++      change_formatter: [ Ref(TickFormatter), () => NumeralTickFormatter.create() ],
+       layout:       [ Str,        "column" ],
+       source:       [ Ref(ColumnDataSource)   ],
+       plot_x:       [ Str,             "x" ],
+diff --git a/panel/models/vega.py b/panel/models/vega.py
+index 0ac6c741d44e555d55319ad38547d5b604312b54..9c3fc2b7f126ef899df8039f57bfef5217251a7b 100644
+--- a/panel/models/vega.py
++++ b/panel/models/vega.py
+@@ -23,7 +23,7 @@ VEGA_EMBED_VERSION = "7.0.2"
+ VegaThemeType = t.Literal[
+         'excel', 'ggplot2', 'quartz', 'vox', 'fivethirtyeight', 'dark',
+         'latimes', 'urbaninstitute', 'googlecharts', 'powerbi', 'carbonwhite', 'carbong10', 'carbong90', 'carbong100']
+-VegaTheme = enumeration(VegaThemeType)
++VegaTheme = enumeration(*t.get_args(VegaThemeType))
+ 
+ class VegaEvent(ModelEvent):
+ 
+diff --git a/panel/models/vtk/vtkcolorbar.ts b/panel/models/vtk/vtkcolorbar.ts
+index 325202776177939e3f163e33df8e061330d7a712..b0b643fb42a80651523e2ba512d1c791e42af407 100644
+--- a/panel/models/vtk/vtkcolorbar.ts
++++ b/panel/models/vtk/vtkcolorbar.ts
+@@ -88,7 +88,7 @@ export class VTKColorBar {
+     image.height = h
+     const image_ctx = image.getContext("2d")!
+     const image_data = image_ctx.getImageData(0, 0, w, h)
+-    const cmap = new LinearColorMapper({palette}).rgba_mapper
++    const cmap = LinearColorMapper.create({palette}).rgba_mapper
+     const buf8 = cmap.v_compute(range(0, palette.length))
+     image_data.data.set(buf8)
+     image_ctx.putImageData(image_data, 0, 0)
+diff --git a/panel/package-lock.json b/panel/package-lock.json
+index 0e25114e04dd77ae30bfa322ce1074b87a41512a..e5115a3fa1b3dc937c70ac233abf9aa54800dcaa 100644
+--- a/panel/package-lock.json
++++ b/panel/package-lock.json
+@@ -9,7 +9,7 @@
+       "version": "1.9.4",
+       "license": "BSD-3-Clause",
+       "dependencies": {
+-        "@bokeh/bokehjs": "^3.9.2",
++        "@bokeh/bokehjs": "^4.0.0-dev.1",
+         "@types/debounce": "^1.2.0",
+         "@types/gl-matrix": "^2.4.5",
+         "ace-code": "^1.40.1",
+@@ -43,9 +43,9 @@
+       }
+     },
+     "node_modules/@bokeh/bokehjs": {
+-      "version": "3.9.2",
+-      "resolved": "https://registry.npmjs.org/@bokeh/bokehjs/-/bokehjs-3.9.2.tgz",
+-      "integrity": "sha512-Ine6G9Fdot3ZbhCzjOxAQ8hqzxqnRdhRol4cnEtV2qrmAHl2WPTpBQX+hdxazN28M0jkJSpkwpVP9J68AQcqhQ==",
++      "version": "4.0.0-dev.1",
++      "resolved": "https://registry.npmjs.org/@bokeh/bokehjs/-/bokehjs-4.0.0-dev.1.tgz",
++      "integrity": "sha512-WHVlgvuJ/S5ysZEQI7cTqt4LqReTlB0B3AgO5nXyuPQDQ18n+s64TSEtnlSD46d+EafNxoizJarTRPGH1eA5lw==",
+       "license": "BSD-3-Clause",
+       "workspaces": [
+         "./make",
+@@ -56,26 +56,26 @@
+       ],
+       "dependencies": {
+         "@bokeh/numbro": "^1.6.2",
+-        "@bokeh/slickgrid": "~2.4.4103",
+         "@preact/signals": "^2.5.1",
+         "@types/geojson": "^7946.0.13",
+         "@types/google.maps": "^3.55.5",
+         "@types/nearley": "^2.11.5",
+-        "@types/proj4": "^2.5.5",
+         "@types/semver": "^7.7.1",
++        "@types/sortablejs": "^1.15.6",
+         "@types/sprintf-js": "^1.1.4",
+         "choices.js": "^10.2.0",
+         "dompurify": "^3.3.0",
++        "earcut": "^3.0.2",
+         "fflate": "^0.8.2",
+-        "flatbush": "^4.5.1",
+         "flatpickr": "^4.6.13",
+         "marked": "^17.0.1",
+         "mathjax-full": "^3.2.2",
+         "nearley": "^2.20.1",
+         "nouislider": "^15.7.1",
+         "preact": "^10.28.0",
+-        "proj4": "^2.11.0",
++        "proj4": "^2.20.4",
+         "regl": "^2.1.0",
++        "slickgrid": "^5.18.6",
+         "sprintf-js": "^1.1.3",
+         "timezone": "^1.0.23",
+         "tslib": "^2.8.1",
+@@ -94,24 +94,6 @@
+         "node": "*"
+       }
+     },
+-    "node_modules/@bokeh/slickgrid": {
+-      "version": "2.4.4103",
+-      "resolved": "https://registry.npmjs.org/@bokeh/slickgrid/-/slickgrid-2.4.4103.tgz",
+-      "integrity": "sha512-wPitQJNUNUHw+86BPemvb1kIuV6UB4CpjEEDIXpU8G6Jges+8nx/iGHW8w9BwvICdeyhAmfX9Hmn5vRJMbe+uw==",
+-      "license": "MIT",
+-      "dependencies": {
+-        "@types/slickgrid": "^2.1.30",
+-        "jquery": ">=3.4.0",
+-        "jquery-ui": ">=1.8.0",
+-        "tslib": "^1.10.0"
+-      }
+-    },
+-    "node_modules/@bokeh/slickgrid/node_modules/tslib": {
+-      "version": "1.14.1",
+-      "resolved": "https://registry.npmjs.org/tslib/-/tslib-1.14.1.tgz",
+-      "integrity": "sha512-Xni35NKzjgMrwevysHTCArtLDpPvye8zV/0E4EyYn43P7/7qvQwPh9BGkHewbMulVntbigmcT7rdX3BNo9wRJg==",
+-      "license": "0BSD"
+-    },
+     "node_modules/@eslint-community/eslint-utils": {
+       "version": "4.9.1",
+       "resolved": "https://registry.npmjs.org/@eslint-community/eslint-utils/-/eslint-utils-4.9.1.tgz",
+@@ -404,15 +386,6 @@
+       "integrity": "sha512-X9QTSvGJ0nCfMzYOnaVs/k6/4L+7F5uCS+4iUmkLEls6J9S/Phv+m/i3mDeyc49ZBgwab3EFO1HEoBY7k98EGQ==",
+       "license": "MIT"
+     },
+-    "node_modules/@types/jquery": {
+-      "version": "3.5.31",
+-      "resolved": "https://registry.npmjs.org/@types/jquery/-/jquery-3.5.31.tgz",
+-      "integrity": "sha512-rf/iB+cPJ/YZfMwr+FVuQbm7IaWC4y3FVYfVDxRGqmUCFjjPII0HWaP0vTPJGp6m4o13AXySCcMbWfrWtBFAKw==",
+-      "license": "MIT",
+-      "dependencies": {
+-        "@types/sizzle": "*"
+-      }
+-    },
+     "node_modules/@types/json-schema": {
+       "version": "7.0.15",
+       "resolved": "https://registry.npmjs.org/@types/json-schema/-/json-schema-7.0.15.tgz",
+@@ -426,33 +399,18 @@
+       "integrity": "sha512-dM7TrN0bVxGGXTYGx4YhGear8ysLO5SOuouAWM9oltjQ3m9oYa13qi8Z1DJp5zxVMPukvQdsrnZmgzpeuTSEQA==",
+       "license": "MIT"
+     },
+-    "node_modules/@types/proj4": {
+-      "version": "2.5.5",
+-      "resolved": "https://registry.npmjs.org/@types/proj4/-/proj4-2.5.5.tgz",
+-      "integrity": "sha512-y4tHUVVoMEOm2nxRLQ2/ET8upj/pBmoutGxFw2LZJTQWPgWXI+cbxVEUFFmIzr/bpFR83hGDOTSXX6HBeObvZA==",
+-      "license": "MIT"
+-    },
+     "node_modules/@types/semver": {
+       "version": "7.7.1",
+       "resolved": "https://registry.npmjs.org/@types/semver/-/semver-7.7.1.tgz",
+       "integrity": "sha512-FmgJfu+MOcQ370SD0ev7EI8TlCAfKYU+B4m5T3yXc1CiRN94g/SZPtsCkk506aUDtlMnFZvasDwHHUcZUEaYuA==",
+       "license": "MIT"
+     },
+-    "node_modules/@types/sizzle": {
+-      "version": "2.3.8",
+-      "resolved": "https://registry.npmjs.org/@types/sizzle/-/sizzle-2.3.8.tgz",
+-      "integrity": "sha512-0vWLNK2D5MT9dg0iOo8GlKguPAU02QjmZitPEsXRuJXU/OGIOt9vT9Fc26wtYuavLxtO45v9PGleoL9Z0k1LHg==",
++    "node_modules/@types/sortablejs": {
++      "version": "1.15.9",
++      "resolved": "https://registry.npmjs.org/@types/sortablejs/-/sortablejs-1.15.9.tgz",
++      "integrity": "sha512-7HP+rZGE2p886PKV9c9OJzLBI6BBJu1O7lJGYnPyG3fS4/duUCcngkNCjsLwIMV+WMqANe3tt4irrXHSIe68OQ==",
+       "license": "MIT"
+     },
+-    "node_modules/@types/slickgrid": {
+-      "version": "2.1.40",
+-      "resolved": "https://registry.npmjs.org/@types/slickgrid/-/slickgrid-2.1.40.tgz",
+-      "integrity": "sha512-+HWaipRr4bw0cy4eS8PCWxo+Fi66aL+mh36unRLAWtatAvMnxpldTKfpe9T7zdNtgN+rq+/faux3JzFR1mj/dg==",
+-      "license": "MIT",
+-      "dependencies": {
+-        "@types/jquery": "*"
+-      }
+-    },
+     "node_modules/@types/sprintf-js": {
+       "version": "1.1.4",
+       "resolved": "https://registry.npmjs.org/@types/sprintf-js/-/sprintf-js-1.1.4.tgz",
+@@ -501,7 +459,6 @@
+       "integrity": "sha512-klQbnPAAiGYFyI02+znpBRLyjL4/BrBd0nyWkdC0s/6xFLkXYQ8OoRrSkqacS1ddVxf/LDyODIKbQ5TgKAf/Fg==",
+       "dev": true,
+       "license": "MIT",
+-      "peer": true,
+       "dependencies": {
+         "@typescript-eslint/scope-manager": "8.56.1",
+         "@typescript-eslint/types": "8.56.1",
+@@ -715,7 +672,6 @@
+       "integrity": "sha512-UVJyE9MttOsBQIDKw1skb9nAwQuR5wuGD3+82K6JgJlm/Y+KI92oNsMNGZCYdDsVtRHSak0pcV5Dno5+4jh9sw==",
+       "dev": true,
+       "license": "MIT",
+-      "peer": true,
+       "bin": {
+         "acorn": "bin/acorn"
+       },
+@@ -868,6 +824,12 @@
+         "@types/trusted-types": "^2.0.7"
+       }
+     },
++    "node_modules/earcut": {
++      "version": "3.2.3",
++      "resolved": "https://registry.npmjs.org/earcut/-/earcut-3.2.3.tgz",
++      "integrity": "sha512-vnS4AVwp1KHAF13i1vp1/2D5evWy3k5u/iW/B81QVsUZtV8cv2tU0b2VNFlqvh4kYwrFMDdjPCfAmfyJW9y14Q==",
++      "license": "ISC"
++    },
+     "node_modules/escape-string-regexp": {
+       "version": "4.0.0",
+       "resolved": "https://registry.npmjs.org/escape-string-regexp/-/escape-string-regexp-4.0.0.tgz",
+@@ -887,7 +849,6 @@
+       "integrity": "sha512-6lVbcqSodALYo+4ELD0heG6lFiFxnLMuLkiMi2qV8LMp54N8tE8FT1GMH+ev4Ti00nFjNze2+Su6DsV5OQW3Dg==",
+       "dev": true,
+       "license": "MIT",
+-      "peer": true,
+       "workspaces": [
+         "packages/*"
+       ],
+@@ -1188,27 +1149,12 @@
+         "node": ">=16"
+       }
+     },
+-    "node_modules/flatbush": {
+-      "version": "4.6.2",
+-      "resolved": "https://registry.npmjs.org/flatbush/-/flatbush-4.6.2.tgz",
+-      "integrity": "sha512-nNT7MFJ58Q4IAm3aYsEg+zgZGpdRcmR1i4U+aa8c+r91jmYZg7FTQwNnIMC0FyBqVZTbClKdAnrJkKkfp1BOvw==",
+-      "license": "ISC",
+-      "dependencies": {
+-        "flatqueue": "^3.1.0"
+-      }
+-    },
+     "node_modules/flatpickr": {
+       "version": "4.6.13",
+       "resolved": "https://registry.npmjs.org/flatpickr/-/flatpickr-4.6.13.tgz",
+       "integrity": "sha512-97PMG/aywoYpB4IvbvUJi0RQi8vearvU0oov1WW3k0WZPBMrTQVqekSX5CjSG/M4Q3i6A/0FKXC7RyAoAUUSPw==",
+       "license": "MIT"
+     },
+-    "node_modules/flatqueue": {
+-      "version": "3.1.0",
+-      "resolved": "https://registry.npmjs.org/flatqueue/-/flatqueue-3.1.0.tgz",
+-      "integrity": "sha512-Ia4qIYrrsEqIRx3c3XhkT+QDLQuUV5ovsr6ah1rIgKT5wclhoGK3lAMS1bWRAWxlx7wtlTBpV7QXB5d9fOSRxA==",
+-      "license": "ISC"
+-    },
+     "node_modules/flatted": {
+       "version": "3.4.2",
+       "resolved": "https://registry.npmjs.org/flatted/-/flatted-3.4.2.tgz",
+@@ -1300,21 +1246,6 @@
+       "dev": true,
+       "license": "ISC"
+     },
+-    "node_modules/jquery": {
+-      "version": "3.7.1",
+-      "resolved": "https://registry.npmjs.org/jquery/-/jquery-3.7.1.tgz",
+-      "integrity": "sha512-m4avr8yL8kmFN8psrbFFFmB/If14iN5o9nw/NgnnM+kybDJpRsAynV2BsfpTYrTRysYUdADVD7CkUUizgkpLfg==",
+-      "license": "MIT"
+-    },
+-    "node_modules/jquery-ui": {
+-      "version": "1.14.0",
+-      "resolved": "https://registry.npmjs.org/jquery-ui/-/jquery-ui-1.14.0.tgz",
+-      "integrity": "sha512-mPfYKBoRCf0MzaT2cyW5i3IuZ7PfTITaasO5OFLAQxrHuI+ZxruPa+4/K1OMNT8oElLWGtIxc9aRbyw20BKr8g==",
+-      "license": "MIT",
+-      "dependencies": {
+-        "jquery": ">=1.12.0 <5.0.0"
+-      }
+-    },
+     "node_modules/json-buffer": {
+       "version": "3.0.1",
+       "resolved": "https://registry.npmjs.org/json-buffer/-/json-buffer-3.0.1.tgz",
+@@ -1616,7 +1547,6 @@
+       "resolved": "https://registry.npmjs.org/preact/-/preact-10.28.4.tgz",
+       "integrity": "sha512-uKFfOHWuSNpRFVTnljsCluEFq57OKT+0QdOiQo8XWnQ/pSvg7OpX5eNOejELXJMWy+BwM2nobz0FkvzmnpCNsQ==",
+       "license": "MIT",
+-      "peer": true,
+       "funding": {
+         "type": "opencollective",
+         "url": "https://opencollective.com/preact"
+@@ -1633,13 +1563,24 @@
+       }
+     },
+     "node_modules/proj4": {
+-      "version": "2.12.1",
+-      "resolved": "https://registry.npmjs.org/proj4/-/proj4-2.12.1.tgz",
+-      "integrity": "sha512-vmhP3hmstjXjzFwg8QXJwpoj4n7GVrXk3ZW3DzNK/Ur4cuwXq7ZiMXaWYvLYLQbX8n4MXgbwTr4lthOUZltBpA==",
++      "version": "2.21.0",
++      "resolved": "https://registry.npmjs.org/proj4/-/proj4-2.21.0.tgz",
++      "integrity": "sha512-33HfDftqw8kY+Cl1dcL16SJuqTSzYxmz4re7Nmhk+fs1/N1fFrAkkF579msQTR/4fLeJVSNne8/gpoCz0fk1uw==",
+       "license": "MIT",
+       "dependencies": {
+         "mgrs": "1.0.0",
+-        "wkt-parser": "^1.3.3"
++        "wkt-parser": "^1.5.5"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/ahocevar"
++      },
++      "peerDependencies": {
++        "geotiff": "*"
++      },
++      "peerDependenciesMeta": {
++        "geotiff": {
++          "optional": true
++        }
+       }
+     },
+     "node_modules/punycode": {
+@@ -1737,6 +1678,24 @@
+         "node": ">=8"
+       }
+     },
++    "node_modules/slickgrid": {
++      "version": "5.19.0",
++      "resolved": "https://registry.npmjs.org/slickgrid/-/slickgrid-5.19.0.tgz",
++      "integrity": "sha512-PiV79e3eKZHthdvWhf7+XVii+4wy0ePSC8/FK3/z5zIKxIpo/zjT3RMBTLgzzEkHFKGw9M7URk4GmKz52CzMFQ==",
++      "license": "MIT",
++      "dependencies": {
++        "sortablejs": "^1.15.7"
++      },
++      "engines": {
++        "node": ">=18.0.0"
++      }
++    },
++    "node_modules/sortablejs": {
++      "version": "1.15.7",
++      "resolved": "https://registry.npmjs.org/sortablejs/-/sortablejs-1.15.7.tgz",
++      "integrity": "sha512-Kk8wLQPlS+yi1ZEf48a4+fzHa4yxjC30M/Sr2AnQu+f/MPwvvX9XjZ6OWejiz8crBsLwSq8GHqaxaET7u6ux0A==",
++      "license": "MIT"
++    },
+     "node_modules/speech-rule-engine": {
+       "version": "4.0.7",
+       "resolved": "https://registry.npmjs.org/speech-rule-engine/-/speech-rule-engine-4.0.7.tgz",
+@@ -1947,10 +1906,13 @@
+       "license": "MIT"
+     },
+     "node_modules/wkt-parser": {
+-      "version": "1.3.3",
+-      "resolved": "https://registry.npmjs.org/wkt-parser/-/wkt-parser-1.3.3.tgz",
+-      "integrity": "sha512-ZnV3yH8/k58ZPACOXeiHaMuXIiaTk1t0hSUVisbO0t4RjA5wPpUytcxeyiN2h+LZRrmuHIh/1UlrR9e7DHDvTw==",
+-      "license": "MIT"
++      "version": "1.5.6",
++      "resolved": "https://registry.npmjs.org/wkt-parser/-/wkt-parser-1.5.6.tgz",
++      "integrity": "sha512-cqHU3lzGt/gt2OqIORP0uVy5yeOX43WABmgFkmJsmcqH3HhQo9PiJG6ftytwGKmpQUbegeX7+pQc2BuNCRfcrw==",
++      "license": "MIT",
++      "funding": {
++        "url": "https://github.com/sponsors/ahocevar"
++      }
+     },
+     "node_modules/word-wrap": {
+       "version": "1.2.5",
+diff --git a/panel/package.json b/panel/package.json
+index eed3004bdafaa9181c5274d3bf2b730eddecc7d5..2b835a75b648d5e8433928d407a4ac229cf01bf8 100644
+--- a/panel/package.json
++++ b/panel/package.json
+@@ -8,7 +8,7 @@
+     "url": "https://github.com/holoviz/panel.git"
+   },
+   "dependencies": {
+-    "@bokeh/bokehjs": "^3.9.2",
++    "@bokeh/bokehjs": "^4.0.0-dev.1",
+     "@types/debounce": "^1.2.0",
+     "@types/gl-matrix": "^2.4.5",
+     "ace-code": "^1.40.1",
+diff --git a/panel/tests/conftest.py b/panel/tests/conftest.py
+index 8d8e1447c09e0a202b715fce897e3daf6f71c88b..68d411ad665bc448b60d14159ada9e0356c94d18 100644
+--- a/panel/tests/conftest.py
++++ b/panel/tests/conftest.py
+@@ -474,7 +474,7 @@ def server_cleanup():
+     try:
+         yield
+     finally:
+-        _PATCHED_CURDOCS.clear()
++        _PATCHED_CURDOCS.set(())
+         _STATE.document = Document()
+         state.reset()
+         _watched_files.clear()
+diff --git a/panel/tests/io/test_artifact.py b/panel/tests/io/test_artifact.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..8e6cfd2c3856f345665739181f671b34ceb93c59
+--- /dev/null
++++ b/panel/tests/io/test_artifact.py
+@@ -0,0 +1,22 @@
++from bokeh.embed import embed_server
++from bokeh.models import Div
++
++from panel.io.artifact import ArtifactTemplateRoot, render_artifact_page
++
++
++def test_template_root_separates_logical_key_and_semantic_name():
++    model = Div(name="semantic-root")
++    root = ArtifactTemplateRoot("logical-root", model, "<div></div>")
++
++    assert root.key == "logical-root"
++    assert root.name == "semantic-root"
++    assert root.id == model.id
++
++
++def test_render_rootless_server_artifact_uses_wildcard_mount():
++    artifact = embed_server(".", token="test-token")
++
++    html = render_artifact_page(artifact, {}, ("", ""), "Rootless server")
++
++    assert 'data-bokeh-root="*"' in html
++    assert 'Bokeh.mount_artifact_declaration' in html
+diff --git a/panel/tests/io/test_convert.py b/panel/tests/io/test_convert.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..12d12767bc81819ce788025384524b79de83c7d4
+--- /dev/null
++++ b/panel/tests/io/test_convert.py
+@@ -0,0 +1,10 @@
++from io import StringIO
++
++import pytest
++
++from panel.io.convert import script_to_html
++
++
++def test_bokeh4_conversion_reports_artifact_migration():
++    with pytest.raises(RuntimeError, match='bokeh.embed/v1'):
++        script_to_html(StringIO(''))
+diff --git a/panel/tests/io/test_embed.py b/panel/tests/io/test_embed.py
+index 2e40e3eb26a17631a523d5e17fb587b6d5efc572..34e5f06c0943427609822f9d72cc37ae8149aea2 100644
+--- a/panel/tests/io/test_embed.py
++++ b/panel/tests/io/test_embed.py
+@@ -522,6 +522,10 @@ def test_embed_merged_sliders(document, comm):
+ 
+     cbs = list(model.select({'type': CustomJS}))
+     assert len(cbs) == 5
++    state_callbacks = [cb for cb in cbs if 'state.set_state' in cb.code]
++    assert state_callbacks
++    assert all(cb.args['state'] is state_model for cb in state_callbacks)
++    assert all(state_model.id not in cb.code for cb in state_callbacks)
+ 
+     ref1, ref2 = model.children[2].ref['id'], model.children[3].ref['id']
+     ref3 = model.children[0].children[0].ref['id']
+diff --git a/panel/tests/io/test_notebook.py b/panel/tests/io/test_notebook.py
+index d44f7314059bdba5c72fa320f119fb84d544c7f2..2cf7afe4bcb577075ad57a3457abb47c7abd6cb3 100644
+--- a/panel/tests/io/test_notebook.py
++++ b/panel/tests/io/test_notebook.py
+@@ -5,7 +5,7 @@ pytest.importorskip("IPython")
+ from bokeh.models import ImportedStyleSheet, InlineStyleSheet
+ 
+ from panel.config import config, panel_extension
+-from panel.io.notebook import ipywidget, replace_inline_css
++from panel.io.notebook import ipywidget, render_model, replace_inline_css
+ from panel.io.resources import (
+     CDN_DIST, CDN_ROOT, JS_VERSION, set_resource_mode,
+ )
+@@ -87,3 +87,18 @@ def test_replace_inline_css_ignores_version_query():
+     assert isinstance(unversioned, InlineStyleSheet)
+     assert isinstance(versioned, InlineStyleSheet)
+     assert versioned.css == unversioned.css
++
++
++def test_render_model_uses_artifact_mount(document, comm, nb_loaded):
++    pane = Str('Artifact output')
++    model = pane.get_root(document, comm)
++
++    data, _ = render_model(model, comm)
++
++    html = data['text/html']
++    assert 'data-bokeh-artifact=' in html
++    assert 'Bokeh.mount(artifact' in html
++    assert 'Bokeh.when_mounted(target' in html
++    assert 'mounted.when_disposed' in html
++    assert 'target.bokehMount = handle' not in html
++    assert 'embed_items' not in html
+diff --git a/panel/tests/io/test_save.py b/panel/tests/io/test_save.py
+index dff455b72e959e8660a3a9d119a4b5c4de1b41e3..927b1b216025d8a9bd2757ef409b197dd0a2476a 100644
+--- a/panel/tests/io/test_save.py
++++ b/panel/tests/io/test_save.py
+@@ -10,9 +10,11 @@ from bokeh.resources import Resources
+ from panel.config import config
+ from panel.io.resources import CDN_DIST
+ from panel.models.vega import VegaPlot
+-from panel.pane import Alert, Vega
++from panel import Row
++from panel.pane import Alert, Str, Vega
+ from panel.template import BootstrapTemplate
+ from panel.tests.util import hv_available
++from panel.widgets import Checkbox
+ 
+ vega_example = {
+     'config': {
+@@ -38,6 +40,10 @@ def test_save_external():
+     pane.save(sio)
+     sio.seek(0)
+     html = sio.read()
++    assert 'type="application/vnd.bokeh.embed+json"' in html
++    assert 'data-bokeh-artifact=' in html
++    assert 'Bokeh.documents' not in html
++    assert 'Bokeh.index' not in html
+     for js in VegaPlot.__javascript_raw__:
+         assert js.replace(config.npm_cdn, f'{CDN_DIST}bundled/vegaplot') in html
+ 
+@@ -62,6 +68,17 @@ def test_save_cdn_resources():
+     assert re.findall('https://cdn.holoviz.org/panel/(.*)/dist/panel.min.js', html)
+ 
+ 
++def test_save_embed_state_uses_protocol_ids():
++    checkbox = Checkbox()
++    text = Str()
++    checkbox.link(text, callbacks={'value': lambda target, event: setattr(target, 'object', event.new)})
++
++    sio = StringIO()
++    Row(checkbox, text).save(sio, embed=True)
++
++    assert '"model_ids":"protocol-full"' in sio.getvalue()
++
++
+ @hv_available
+ def test_static_path_in_holoviews_save(tmpdir):
+     import holoviews as hv
+@@ -88,6 +105,8 @@ def test_save_template():
+     sio.seek(0)
+     html = sio.read()
+ 
+-    for doc in template._documents:
+-        for root in doc.roots:
+-            assert f"data-root-id=\"{root.ref['id']}\"" in html
++    roots = sum(len(doc.roots) for doc in template._documents)
++    assert html.count('data-bokeh-root=') == roots
++    assert 'Bokeh.mount_artifact_declaration' in html
++    assert 'Bokeh.documents' not in html
++    assert 'Bokeh.index' not in html
+diff --git a/panel/tests/test_server.py b/panel/tests/test_server.py
+index 7799c81755cd84371e7c869211ff3b77ddc3c598..6e9783a5848c67326cf90815d9f63f3c259a5e53 100644
+--- a/panel/tests/test_server.py
++++ b/panel/tests/test_server.py
+@@ -20,9 +20,9 @@ from panel.io import state
+ from panel.io.application import Application
+ from panel.io.resources import DIST_DIR, JS_VERSION
+ from panel.io.server import (
+-    _MAX_APP_PATH_CHARS, _MAX_ROUTE_PARAM_VALUE_CHARS, INDEX_HTML, RootHandler,
+-    _normalize_app_path, _path_template_to_tornado_route, get_server,
+-    set_curdoc,
++    _MAX_APP_PATH_CHARS, _MAX_ROUTE_PARAM_VALUE_CHARS, AutoloadJsHandler,
++    BkEmbedJsonHandler, INDEX_HTML, RootHandler, _normalize_app_path,
++    _path_template_to_tornado_route, get_server, per_app_patterns, set_curdoc,
+ )
+ from panel.layout import Row
+ from panel.models import HTML as BkHTML
+@@ -41,6 +41,13 @@ from panel.widgets import (
+ PYTEST_VERSION = Version(pytest.__version__).release
+ 
+ 
++def test_bokeh4_embedding_routes():
++    routes = {route: handler for route, handler, *_ in per_app_patterns}
++
++    assert routes['/embed.json'] is BkEmbedJsonHandler
++    assert routes['/autoload.js'] is AutoloadJsHandler
++
++
+ @pytest.mark.xdist_group(name="server")
+ def test_get_server(html_server_session):
+     html, server, session, port = html_server_session
+@@ -323,6 +330,14 @@ def test_server_extensions_on_root(server_implementation):
+     assert serve_and_request(md).ok
+ 
+ 
++def test_server_artifact_page(server_implementation):
++    page = serve_and_request(Markdown('# Title')).content.decode('utf-8')
++
++    assert '"schema":"bokeh.embed/v1"' in page
++    assert 'data-bokeh-artifact=' in page
++    assert 'Bokeh.mount_artifact_declaration' in page
++
++
+ def test_server_extension_static_on_root(server_implementation):
+     md = Markdown('# Title')
+     r = serve_and_request(md, suffix='/static/extensions/panel/panel.min.js')
+@@ -337,7 +352,15 @@ def test_autoload_js(port):
+     r = serve_and_request({app_name: html}, port=port, suffix=f"/{app_name}/autoload.js?{args}")
+ 
+     assert r.status_code == 200
+-    assert f"http://localhost:{port}/static/extensions/panel/panel.min.js" in r.content.decode('utf-8')
++    autoload = r.content.decode('utf-8')
++    assert f"http://localhost:{port}/static/extensions/panel/panel.min.js" in autoload
++    assert 'Bokeh.mount(' in autoload
++    assert 'Bokeh.when_mounted(target' in autoload
++    assert 'mounted.when_disposed' in autoload
++    assert 'target.bokehMount = handle' not in autoload
++    assert 'Bokeh.documents' not in autoload
++    assert 'Bokeh.index' not in autoload
++    assert 'embed_items' not in autoload
+ 
+ 
+ def test_server_async_callbacks(server_implementation):
+@@ -526,6 +549,9 @@ def test_server_cancel_task(server_implementation):
+ 
+     wait_until(lambda: state.cache['count'] > 0)
+     state.cancel_task('periodic')
++    # Allow an already dispatched callback to complete before asserting that
++    # cancellation prevents subsequent executions.
++    time.sleep(0.2)
+     count = state.cache['count']
+     time.sleep(0.5)
+     assert state.cache['count'] == count
+@@ -626,7 +652,7 @@ def test_server_schedule_at(server_implementation):
+     # Check callback was executed within small margin of error
+     wait_until(lambda: 'at' in state.cache)
+     assert abs(state.cache['at'] - scheduled[0]) < dt.timedelta(seconds=0.2)
+-    assert len(state._scheduled) == 0
++    assert not any(key.endswith('_periodic') for key in state._scheduled)
+ 
+ 
+ def test_server_schedule_at_iterator(server_implementation):
+@@ -653,7 +679,7 @@ def test_server_schedule_at_iterator(server_implementation):
+     wait_until(lambda: len(state.cache['at']) == 2)
+     assert abs(state.cache['at'][0] - scheduled[0]) < dt.timedelta(seconds=0.2)
+     assert abs(state.cache['at'][1] - scheduled[1]) < dt.timedelta(seconds=0.2)
+-    assert len(state._scheduled) == 0
++    assert not any(key.endswith('_periodic') for key in state._scheduled)
+ 
+ 
+ def test_server_schedule_at_callable(server_implementation):
+@@ -683,7 +709,7 @@ def test_server_schedule_at_callable(server_implementation):
+     converted = [s.replace(tzinfo=dt.timezone.utc).astimezone().replace(tzinfo=None) for s in scheduled]
+     assert abs(state.cache['at'][0] - converted[0]) < dt.timedelta(seconds=0.2)
+     assert abs(state.cache['at'][1] - converted[1]) < dt.timedelta(seconds=0.2)
+-    assert len(state._scheduled) == 0
++    assert not any(key.endswith('_periodic') for key in state._scheduled)
+ 
+ 
+ @pytest.mark.xdist_group(name="server")
+diff --git a/panel/tests/ui/io/test_notifications.py b/panel/tests/ui/io/test_notifications.py
+index e496f1e326a02fbb179598bf1727ed22c7503989..ad1de61e6ccc3a6c522240aa3f4cf8374325ea33 100644
+--- a/panel/tests/ui/io/test_notifications.py
++++ b/panel/tests/ui/io/test_notifications.py
+@@ -79,7 +79,7 @@ def test_disconnect_notification(page):
+         config.disconnect_notification = 'Disconnected!'
+         button = Button(label='Stop server')
+         button.js_on_click(code="""
+-        Bokeh.documents[0].event_manager.send_event({'event_name': 'connection_lost', 'publish': false})
++        cb_obj.document.event_manager.send_event({'event_name': 'connection_lost', 'publish': false})
+         """)
+         return button
+ 
+diff --git a/panel/tests/ui/pane/test_markup.py b/panel/tests/ui/pane/test_markup.py
+index 69b0f1d318972788f63979fb51a77d7eeb75dd2e..62185f1e2b40ad8f77d08c78c43cc176f111ba4b 100644
+--- a/panel/tests/ui/pane/test_markup.py
++++ b/panel/tests/ui/pane/test_markup.py
+@@ -189,8 +189,10 @@ def test_markdown_pane_visible_after_stylesheet_url_patched(page):
+     expect(page.locator(".markdown")).to_have_count(1)
+     expect(page.locator(".markdown").locator("div")).not_to_be_visible()
+ 
+-    page.evaluate("""() => {  // Mimic Panel patching the stylesheet URLs
+-      for (const model of Bokeh.documents[0].all_models) {
++    page.evaluate("""async () => {  // Mimic Panel patching the stylesheet URLs
++      const target = document.querySelector("[data-bokeh-root]")
++      const mounted = await Bokeh.when_mounted(target)
++      for (const model of mounted.document.all_models) {
+         if (String(model.url).includes("pending.css")) {
+           model.url = "patched.css"
+         }
+diff --git a/panel/tests/ui/test_custom.py b/panel/tests/ui/test_custom.py
+index bdbbaecda17d4d74406d068316a80c7bd865b3a6..4af468d6a402b78f03f03867f6d421bc50ddc5c2 100644
+--- a/panel/tests/ui/test_custom.py
++++ b/panel/tests/ui/test_custom.py
+@@ -1507,8 +1507,10 @@ def test_react_root_ready_after_child_update(page):
+ 
+     # After the child swap, re-check root.ready resolves
+     page.wait_for_function("""
+-        () => {
+-            const views = Object.values(Bokeh.index)
++        async () => {
++            const target = document.querySelector("[data-bokeh-root]")
++            const mounted = await Bokeh.when_mounted(target)
++            const views = mounted.views
+             if (views.length === 0) return false
+             const root = views[0].root
+             let resolved = false
+@@ -1558,8 +1560,10 @@ def test_react_root_ready_after_children_append(page):
+ 
+     # After appending, root.ready should resolve once the new child is mounted
+     page.wait_for_function("""
+-        () => {
+-            const views = Object.values(Bokeh.index)
++        async () => {
++            const target = document.querySelector("[data-bokeh-root]")
++            const mounted = await Bokeh.when_mounted(target)
++            const views = mounted.views
+             if (views.length === 0) return false
+             const root = views[0].root
+             let resolved = false
+@@ -1588,7 +1592,7 @@ class ReactChildrenRace(ReactComponent):
+ # Wraps the host view instance (not the prototype) so only the host's own update
+ # passes are counted and not the nested builds of its child views.
+ COUNT_OVERLAPPING_BUILDS = """
+-() => {
++async () => {
+     const find = (view) => {
+         if (view.model.type.startsWith('panel.models.esm.')) return view
+         for (const child of (view.child_views || [])) {
+@@ -1598,7 +1602,9 @@ COUNT_OVERLAPPING_BUILDS = """
+         return null
+     }
+     let host = null
+-    for (const root of Object.values(Bokeh.index)) {
++    const target = document.querySelector("[data-bokeh-root]")
++    const mounted = await Bokeh.when_mounted(target)
++    for (const root of mounted.views) {
+         host = find(root)
+         if (host) break
+     }
+@@ -1650,8 +1656,10 @@ def test_children_updates_do_not_overlap(page):
+     assert page.evaluate('() => window._overlaps') == 0
+ 
+     page.wait_for_function("""
+-        () => {
+-            const views = Object.values(Bokeh.index)
++        async () => {
++            const target = document.querySelector("[data-bokeh-root]")
++            const mounted = await Bokeh.when_mounted(target)
++            const views = mounted.views
+             if (views.length === 0) return false
+             const root = views[0].root
+             let resolved = false
+diff --git a/panel/tests/ui/widgets/test_tabulator.py b/panel/tests/ui/widgets/test_tabulator.py
+index 7aa2d811050dcf0032b5063052b13ed9c7c660c6..a32beb068339b5c4fa6b43119e47076f139ca8e4 100644
+--- a/panel/tests/ui/widgets/test_tabulator.py
++++ b/panel/tests/ui/widgets/test_tabulator.py
+@@ -217,12 +217,18 @@ def test_tabulator_movable_columns(page):
+     ]
+ 
+     assert page.evaluate(
+-        "() => Object.values(Bokeh.index)[0].tabulator.options.movableColumns"
++        """async () => {
++          const target = document.querySelector("[data-bokeh-root]")
++          const mounted = await Bokeh.when_mounted(target)
++          return mounted.views[0].tabulator.options.movableColumns
++        }"""
+     )
+ 
+     page.evaluate(
+-        """() => {
+-          const table = Object.values(Bokeh.index)[0].tabulator
++        """async () => {
++          const target = document.querySelector("[data-bokeh-root]")
++          const mounted = await Bokeh.when_mounted(target)
++          const table = mounted.views[0].tabulator
+           table.moveColumn('A', 'B', true)
+         }"""
+     )
+@@ -244,7 +250,11 @@ def test_tabulator_movable_columns(page):
+ 
+     wait_until(
+         lambda: not page.evaluate(
+-            "() => Object.values(Bokeh.index)[0].tabulator.options.movableColumns"
++            """async () => {
++              const target = document.querySelector("[data-bokeh-root]")
++              const mounted = await Bokeh.when_mounted(target)
++              return mounted.views[0].tabulator.options.movableColumns
++            }"""
+         ),
+         page,
+     )
+diff --git a/pyproject.toml b/pyproject.toml
+index f5d961c7297ab83ffd258f348504bfdb8dac425e..d59b9b9ff78f3d40eb4861ef3b80c9d3277f1366 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -3,7 +3,7 @@ requires = [
+     "hatchling",
+     "hatch-vcs",
+     "param >=2.1.0",
+-    "bokeh >=3.8.0,<3.10.0",
++    "bokeh >=4.0.0.dev1,<4.1.0",
+     "pyviz_comms >=0.7.4",
+     "requests",
+     "packaging",
+@@ -48,7 +48,7 @@ classifiers = [
+ ]
+ 
+ dependencies = [
+-    'bokeh >=3.7.0,<3.10.0',
++    'bokeh >=4.0.0.dev1,<4.1.0',
+     'param >=2.1.0,<3.0',
+     'pyviz_comms >=2.0.0',
+     'panel-material-ui >=0.10.0',
