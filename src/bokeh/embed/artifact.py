@@ -239,6 +239,10 @@ def _normalize_model_ids(value: Any) -> Any:
             }
         if isinstance(child, (list, tuple)):
             return [replace(item) for item in child]
+        # JSON.stringify() emits integral JavaScript numbers without a decimal
+        # suffix. Match that representation for cross-language fingerprints.
+        if isinstance(child, float) and child.is_integer():
+            return int(child)
         return child
 
     return replace(value)
