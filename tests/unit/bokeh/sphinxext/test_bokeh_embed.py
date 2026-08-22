@@ -167,7 +167,9 @@ def test_non_html_builder_emits_accessible_fallback_without_assets(tmp_path: Pat
 def test_quick_build_skips_execution_and_emits_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     source, output, doctrees = _project(tmp_path)
     (source / "index.rst").write_text(
-        "Quick\n=====\n\n.. bokeh-embed::\n   :source-position: none\n\n"
+        "Quick\n=====\n\n.. bokeh-embed::\n"
+        "   :alt: Sales trend visualization\n"
+        "   :source-position: none\n\n"
         "   raise RuntimeError('must not execute')\n",
         encoding="utf-8",
     )
@@ -175,7 +177,7 @@ def test_quick_build_skips_execution_and_emits_fallback(tmp_path: Path, monkeypa
 
     _build(source, output, doctrees)
     html = (output / "index.html").read_text(encoding="utf-8")
-    assert "Interactive Bokeh content omitted" in html
+    assert "Sales trend visualization" in html
     assert "data-bokeh-page-payload-url" not in html
 
 
@@ -385,7 +387,10 @@ def test_tracking_manifest_removes_stale_bootstrap_payloads_and_vendor_assets(tm
     assert len(_payloads(output)) == 1
 
     index.write_text("Tracked\n=======\n\nNo embed remains.\n", encoding="utf-8")
-    _build(source, output, doctrees)
+    _build(source, output, doctrees, freshenv=False, force_all=False)
+    html = (output / "index.html").read_text(encoding="utf-8")
+    assert "data-bokeh-page-payload-url" not in html
+    assert "bokeh-sphinx-bootstrap.js" not in html
     assert not (generated / "bokeh-sphinx-bootstrap.js").exists()
     assert not (generated / "vendor" / "js" / "bokeh.min.js").exists()
     assert _payloads(output) == []

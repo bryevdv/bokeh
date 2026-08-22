@@ -119,3 +119,54 @@ and its typed renderers rather than reconstructing autoload or ``RenderItem``
 markup. Code that inspected a generated bootstrap's private mount collection or
 waited for its load order should select the intended ``data-bokeh-root`` target
 and call ``Bokeh.when_mounted()`` instead.
+
+Core-review fixture
+~~~~~~~~~~~~~~~~~~~
+
+The following two-file project is a compact way to review the extension's
+user-visible contract. Save the first block as ``conf.py``::
+
+    extensions = ["bokeh.sphinxext.bokeh_embed"]
+    project = "Bokeh embed review"
+    bokeh_embed_resources = "static"
+
+Save the second block as ``index.rst`` next to it::
+
+    Bokeh embed review
+    ==================
+
+    .. bokeh-embed::
+       :alt: Linked observations and selection controls
+       :source-position: below
+
+       from bokeh.layouts import column
+       from bokeh.models import Div, Slider
+       from bokeh.plotting import figure, show
+
+       plot = figure(height=240, width=480, title="Artifact-owned plot")
+       plot.scatter([1, 2, 3], [4, 6, 5], size=14)
+       show(column(
+           Div(text="One artifact can own layouts, widgets, and plots."),
+           Slider(start=1, end=10, value=4, title="Host-visible widget"),
+           plot,
+       ))
+
+Build it with ``python -m sphinx -b html . _build/html``. The result exercises
+ordinary ``show()`` capture, a multi-model artifact, accessible fallback text,
+and static resource selection. The generated files make the ownership boundary
+visible to reviewers::
+
+    _build/html/index.html
+    _build/html/_static/bokeh-embed/
+    |-- bokeh-sphinx-bootstrap.js
+    |-- bokeh-embed-<page-fingerprint>.json
+    |-- manifest.json
+    `-- vendor/js/
+        |-- bokeh.min.js
+        |-- bokeh-api.min.js
+        `-- bokeh-widgets.min.js
+
+There is one page payload and one bootstrap regardless of how many directives
+the page contains. The manifest names only extension-owned files; removing the
+last directive during an incremental build removes those payload and resource
+references without touching unrelated files under ``_static``.

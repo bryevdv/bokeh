@@ -65,10 +65,16 @@ from ._internal.util import get_sphinx_resources
 __all__ = ("BokehEmbedDirective", "setup")
 
 GOOGLE_API_KEY = getenv("GOOGLE_API_KEY")
+# This is the Sphinx extension's private page envelope. It is deliberately
+# distinct from the public ``bokeh.embed/v1`` artifact schema nested inside it.
 PAGE_SCHEMA = "bokeh.embed-page/v1"
+# These names are an implementation detail of the generated Sphinx site, not a
+# stable URL contract for other artifact hosts.
 GENERATED_DIR = "bokeh-embed"
 LEGACY_GENERATED_DIR = "bokeh-plot"
 BOOTSTRAP_NAME = "bokeh-sphinx-bootstrap.js"
+# The manifest records files owned by this extension so incremental cleanup
+# never removes neighboring user-managed files under ``_static``.
 TRACKING_NAME = "manifest.json"
 
 _RENAMED_CONFIG_VALUES = {
@@ -92,6 +98,20 @@ class bokeh_artifact(nodes.General, nodes.Element):
 
 
 class BokehEmbedDirective(BokehDirective):
+    """Compile Python example output into page-scoped Bokeh embed artifacts.
+
+    The directive captures ordinary :func:`bokeh.io.show` and
+    :func:`bokeh.io.save` calls, compiles each captured value with the shared
+    artifact compiler, and stores a picklable record in the Sphinx doctree.
+    Rendering and resource delivery happen later, after all directives on a
+    page are known, so a page receives one deterministic payload and the exact
+    union of its resource requirements.
+
+    Non-HTML and quick builders emit the configured accessible fallback without
+    executing or loading interactive content. The resulting browser targets
+    use the standard target-local ``BokehMount`` lifecycle; this class does not
+    own a parallel view registry or mount implementation.
+    """
 
     has_content = True
     optional_arguments = 2
@@ -445,6 +465,13 @@ def build_finished(app: Any, exception: Exception | None) -> None:
 
 
 def setup(app: Any) -> SphinxParallelSpec:
+    """Register the artifact-based Bokeh embedding extension with Sphinx.
+
+    The extension is safe for parallel reading and writing. Generated files
+    are tracked in an extension-owned manifest so repeated and incremental
+    builds can deterministically replace stale page payloads and resources.
+    """
+
     app.add_directive("bokeh-embed", BokehEmbedDirective)
     app.add_directive("bokeh-plot", _RemovedBokehPlotDirective)
     app.add_node(bokeh_artifact)
