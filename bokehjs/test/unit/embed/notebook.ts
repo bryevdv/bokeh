@@ -47,4 +47,20 @@ describe("notebook artifact patches", () => {
 
     expect([...new Uint8Array(received!.get("buffer")!)]).to.be.equal([1, 2])
   })
+
+  it("doesn't advance the revision when applying a patch fails", () => {
+    let attempts = 0
+    const document = {
+      apply_json_patch() {
+        attempts++
+        if (attempts == 1) throw new Error("model rejected patch")
+      },
+    } as unknown as Document
+    const receive = create_notebook_patch_receiver(document)
+    const patch = {kind: "patch", revision: 1, content: {events: []}}
+
+    expect(() => receive(patch)).to.throw(Error)
+    receive(patch)
+    expect(attempts).to.be.equal(2)
+  })
 })

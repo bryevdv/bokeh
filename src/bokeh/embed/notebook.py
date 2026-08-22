@@ -39,8 +39,15 @@ def notebook_content(content: NotebookContent, *, theme: ThemeSource = FromCurdo
     """Compile notebook content and its host-owned fragment.
 
     ``live=True`` retains protocol-visible model IDs so comm patches address
-    the same graph. The returned fragment resolves no resources: the notebook
-    host owns one explicit, shared resource policy for all displays.
+    the same graph; static content uses graph-minimal identifiers. The returned
+    pair contains the versioned artifact and an HTML fragment that declares its
+    targets but deliberately resolves no resources. A notebook frontend owns
+    one explicit, shared resource policy for all displays, creates the
+    :class:`BokehMount`, and disposes it when the output is released.
+
+    This function does not create a comm, register a frontend view, or retain a
+    document. Those are host lifecycle responsibilities layered on the same
+    artifact and mount contracts used by other embedding consumers.
     """
     compiler = embed_protocol if live else embed
     artifact = compiler(content, theme=theme, _always_new=True)
