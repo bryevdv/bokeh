@@ -220,6 +220,48 @@ branch-4.0
                                 └── codex/embed-08-panel
 ```
 
+## Ten-minute reviewer path
+
+The shortest way to review the architecture is to follow one value from Python
+intent to browser cleanup. Each transition has one owning task, so a reviewer
+can reject an incompatible second implementation at the boundary where it
+would be introduced.
+
+| Transition | Contract to inspect | Owning task |
+| --- | --- | --- |
+| construct runtime objects | models and views are created through failure-atomic factories | EMBED 01 |
+| establish DOM ownership | one keyed mount returns an immediate lifecycle handle | EMBED 02 |
+| serialize static state | graph-minimal IDs and logical root keys replace global model-ID addressing | EMBED 03 |
+| compile and deliver | one compiler produces a versioned artifact whose requirements are resolved by host policy | EMBED 04 |
+| aggregate a documentation page | Sphinx unions artifact requirements and emits one page bootstrap | EMBED 05 |
+| adapt a notebook host | Jupyter adds bounded synchronization and output ownership without another renderer | EMBED 06 |
+| acquire from external JavaScript | target-local discovery replaces global view and document registries | EMBED 07 |
+| migrate downstream | Panel consumes the completed contract and reports reusable Bokeh gaps separately | EMBED 08 |
+
+The resulting lifecycle is intentionally small:
+
+.. code-block:: python
+
+   artifact = embed({"plot": plot, "controls": controls})
+   page = render_page(artifact, resources=ResourcePolicy(mode="cdn"))
+
+.. code-block:: javascript
+
+   const mount = Bokeh.mount(artifact, {
+     targets: {
+       plot: document.querySelector("#plot"),
+       controls: document.querySelector("#controls"),
+     },
+   })
+   await mount.ready
+   const plot = mount.root("plot")
+   await mount.dispose()
+
+Here the artifact declares what it needs, the host chooses how those
+requirements are delivered, logical keys address roots, and the retained mount
+owns readiness, lookup, errors, replacement, and cleanup. No DOM ID or global
+model/view registry crosses those boundaries.
+
 ### EMBED 00 — Contract and stack coordination
 
 Own the cross-language artifact schema, root addressing, resource requirement/policy vocabulary, lifecycle/ownership rules, compatibility policy, shared fixtures, and stack verification record. Keep design decisions here rather than letting later branches choose incompatible variants.
@@ -259,7 +301,9 @@ Acceptance:
 - the original ten-commit capability is accounted for by range-diff or an explicit equivalence note;
 - React, Vue, Angular, and Web Component fixtures cover mount/update/unmount, errors, multi-root, shared-document, and selective root removal;
 - resource scripts are host-owned or resolved by the common loader, never injected independently by each framework;
-- disposal and deserialization rollback are leak-tested.
+- mount-created documents, views, target publication, framework controllers,
+  and listeners are leak-tested across failure and disposal. Model construction
+  and deserialization rollback remain EMBED 01 responsibilities.
 
 ### EMBED 03 — Minimal model IDs
 
