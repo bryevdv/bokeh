@@ -6,17 +6,17 @@ a native range input to update its `ColumnDataSource`. This demonstrates that th
 framework owns the surrounding UI and state while BokehJS updates the existing
 plot without a remount. The Node.js example remains DOM-free by design.
 
-| Project | Integration | User-facing entry point |
-| --- | --- | --- |
-| [React + Vite](react-vite/) | `@bokeh/react` component | [`App.tsx`](react-vite/src/App.tsx) |
-| [Vue + Vite](vue-vite/) | `@bokeh/vue` component | [`App.vue`](vue-vite/src/App.vue) |
-| [Svelte + Vite](svelte-vite/) | `@bokeh/svelte` action | [`App.svelte`](svelte-vite/src/App.svelte) |
-| [Angular](angular-ng/) | `@bokeh/angular` standalone component | [`main.ts`](angular-ng/src/main.ts) |
-| [Web Component + Webpack](web-component-webpack/) | `@bokeh/web-component` custom element | [`main.ts`](web-component-webpack/src/main.ts) |
-| [Vanilla + Vite](vanilla-vite/) | direct `mount()` | [`main.ts`](vanilla-vite/src/main.ts) |
-| [Vanilla + Webpack](vanilla-webpack/) | direct `mount()` | [`main.ts`](vanilla-webpack/src/main.ts) |
-| [Vanilla + Rspack](vanilla-rspack/) | direct `mount()` | [`main.ts`](vanilla-rspack/src/main.ts) |
-| [Node.js SSR compatibility](node-ssr-compat/) | DOM-free import and model construction | [`main.mjs`](node-ssr-compat/main.mjs) |
+| Project | Integration | User-facing entry point | Lifecycle evidence |
+| --- | --- | --- | --- |
+| [React + Vite](react-vite/) | `@bokeh/react` component | [`App.tsx`](react-vite/src/App.tsx) | effect mount, prop update, cleanup, and HMR replacement |
+| [Vue + Vite](vue-vite/) | `@bokeh/vue` component | [`App.vue`](vue-vite/src/App.vue) | composable mount, reactive update, unmount, and HMR replacement |
+| [Svelte + Vite](svelte-vite/) | `@bokeh/svelte` action | [`App.svelte`](svelte-vite/src/App.svelte) | action update/destroy and HMR replacement |
+| [Angular](angular-ng/) | `@bokeh/angular` standalone component | [`main.ts`](angular-ng/src/main.ts) | input changes, selective root removal, and component destruction |
+| [Web Component + Webpack](web-component-webpack/) | `@bokeh/web-component` custom element | [`main.ts`](web-component-webpack/src/main.ts) | connect, model replacement, disconnect, and reconnect |
+| [Vanilla + Vite](vanilla-vite/) | direct `mount()` | [`main.ts`](vanilla-vite/src/main.ts) | immediate handle, readiness, update, and disposal |
+| [Vanilla + Webpack](vanilla-webpack/) | direct `mount()` | [`main.ts`](vanilla-webpack/src/main.ts) | package-format parity for the direct lifecycle |
+| [Vanilla + Rspack](vanilla-rspack/) | direct `mount()` | [`main.ts`](vanilla-rspack/src/main.ts) | package-format parity for the direct lifecycle |
+| [Node.js SSR compatibility](node-ssr-compat/) | DOM-free import and model construction | [`main.mjs`](node-ssr-compat/main.mjs) | importing packages does not claim a DOM target |
 
 All projects are npm workspaces in the BokehJS repository. The framework test
 matrix also copies these projects to an isolated directory, installs packed
