@@ -101,7 +101,8 @@ The three implementation efforts are one program, not three independent API desi
 The framework source branch originally established:
 
 - `mount(obj, target, options) -> Promise<BokehMount>`;
-- `BokehMount.document`, `.models`, `.views`, `.view_manager`, `.disposed`, and `.dispose()`;
+- `BokehMount.document`, `.models`, `.views`, `.view_lookup`, `.root_keys`,
+  `.root()`, `.view()`, `.target()`, `.disposed`, and `.dispose()`;
 - React, Vue, Angular, and Web Component adapters;
 - multi-root and shared-document behavior.
 
@@ -124,8 +125,8 @@ EMBED 02 resolves the browser boundary as follows:
   caller-owned. Session and loaded-resource ownership are reserved for EMBED 04
   and must be exposed through this same handle rather than a parallel lifecycle.
 - `dispose()` is idempotent and awaitable. Early disposal, abort, target errors,
-  and render errors roll back mount-owned views, global-index registrations,
-  listeners, and document ownership before readiness rejects.
+  and render errors roll back mount-owned views, target-local handle
+  publications, listeners, and document ownership before readiness rejects.
 
 The positional `mount_document_standalone()` option remains an internal bridge
 for server/notebook callers that later branches still need to migrate. It is not
@@ -215,7 +216,8 @@ branch-4.0
                 └── codex/embed-04-artifact-runtime
                     └── codex/embed-05-sphinx
                         └── codex/embed-06-jupyter
-                            └── codex/embed-07-panel
+                            └── codex/embed-07-view-index-cleanup
+                                └── codex/embed-08-panel
 ```
 
 ### EMBED 00 — Contract and stack coordination
@@ -307,9 +309,12 @@ Detailed API and migration recipes are in
 `outputs/embed-04-artifact-runtime.md`; determinism results are in
 `outputs/embed-04-artifact-measurements.md`.
 
-### EMBED 05 — Sphinx and `bokeh-plot`
+### EMBED 05 — Sphinx and `bokeh-embed`
 
-Make documentation builds a first-class static artifact consumer. Replace per-directive autoload programs and global monkeypatching with explicit output capture, artifact nodes, per-page aggregation, and exact resources.
+Make documentation builds a first-class static artifact consumer. Replace the
+legacy `bokeh-plot` extension/directive and its per-directive autoload programs
+with canonical `bokeh.sphinxext.bokeh_embed`, `.. bokeh-embed::`, explicit
+output capture, artifact nodes, per-page aggregation, and exact resources.
 
 Acceptance:
 
@@ -321,6 +326,9 @@ Acceptance:
 - stale assets are managed by a manifest;
 - HTML and non-HTML builders have tested output/fallback behavior;
 - full docs build and browser tests include the existing high-plot-count pages and enforce size/request budgets.
+- legacy `bokeh_plot` extension/configuration names and `.. bokeh-plot::` fail
+  with source-located Bokeh 4 migration guidance; generated assets live under
+  `_static/bokeh-embed` and recognized legacy assets are cleaned safely.
 
 Implemented EMBED 05 decisions that later layers must preserve:
 
@@ -340,7 +348,7 @@ Implemented EMBED 05 decisions that later layers must preserve:
   resolver and typed resource renderer;
 - the page bootstrap calls `Bokeh.mount()` and retains the returned
   `BokehMount`; it does not own a parallel decoder, resource registry, or view
-  lifecycle. EMBED 06 and 07 must continue to use the common mount contract;
+  lifecycle. EMBED 06 through 08 must continue to use the common mount contract;
 - source/options/schema/version/callback-policy fingerprints key the directive
   cache and payload name. External sources are Sphinx dependencies; doctree
   purge/merge and atomic cache writes make incremental and parallel builds
@@ -349,7 +357,7 @@ Implemented EMBED 05 decisions that later layers must preserve:
 - non-HTML/quick builders emit accessible fallback text. Static Python
   callbacks are an actionable source-located error by default; an intentional
   project may select `warn` or `suppress`, while server applications require a
-  server embed outside `bokeh-plot`;
+  server embed outside `bokeh-embed`;
 - cross-runtime fingerprint parity treats integral JSON numbers identically,
   and the BokehJS artifact decoder pre-registers ID-bearing objects before
   decoding forward references. These are shared EMBED 04 contract fixes, not
@@ -375,9 +383,24 @@ Acceptance:
 - export links are safe and portable, concurrent exports are correlation-safe, and Playwright is the only browser automation layer;
 - the detailed review test matrix above passes.
 
-### EMBED 07 — Panel downstream impact and patch proposal
+### EMBED 07 — Global view-index cleanup
 
-Run last, after EMBED 01–06 are complete. Evaluate Panel against the finished Bokeh 4.0 artifact/resource/mount/lifecycle design and propose the necessary downstream patch. Panel consumes the contract; it does not establish a parallel embedding architecture or force preservation of removed Bokeh internals.
+Remove public global view/document discovery after every in-tree consumer has a
+retained or target-local mount route. The final browser contract has no
+`Bokeh.index`, `Bokeh.documents`, or public `view_manager`. External hosts use
+`target.bokehMount` or `Bokeh.when_mounted(target, {signal})`; mounted content is
+addressed through `root_keys`, `root()`, `view()`, `target()`, `document`, and
+`view_lookup`. Semantic cross-root lookup uses `Model.name`; callback-owned
+models use explicit `CustomJS.args`.
+
+Final parent for the downstream audit:
+`codex/embed-07-view-index-cleanup` at
+`159f97de9eb8bdd24c363c50095bdb6565c4a002`, based on EMBED 06 at
+`885d319d5cfb19644538b559c94b7f1047475d14`.
+
+### EMBED 08 — Panel downstream impact and patch proposal
+
+Run last, after EMBED 01–07 are complete. Evaluate Panel against the finished Bokeh 4.0 artifact/resource/mount/lifecycle and target-local discovery design. Panel consumes the contract; it does not establish a parallel embedding architecture or force preservation of removed Bokeh internals.
 
 Acceptance:
 
@@ -391,11 +414,12 @@ Acceptance:
 Final implementation evidence:
 
 - Panel was pinned at `be0b5e2b0955a38a8871aa3fc1703b57c76c1e81`;
-- `outputs/panel-bokeh-4.0.patch` is an applicable 35-file diff covering
+- `outputs/panel-bokeh-4.0.patch` is an applicable 45-file diff covering
   artifact/template/static/notebook/server output, BokehJS 4 compatibility,
-  lifecycle disposal, protocol-full static replay, and explicit WASM migration
-  errors;
-- the independent affected suite passed 133 tests with 77 optional skips;
+  target-local component access, lifecycle disposal, protocol-full static
+  replay, Panel-owned autoload with retained `/embed.json`, and explicit WASM
+  migration errors;
+- the independent affected suite passed 137 tests with 77 optional skips;
   extension build, TypeScript, Ruff, compileall, and browser lifecycle probes
   also passed;
 - resolved assumptions and the three remaining reusable Bokeh gaps are recorded
@@ -420,7 +444,7 @@ No old task should be removed until this audit passes.
 3. Compare the framework replay with `git range-diff` and a tree diff excluding the contract files.
 4. Compare the minimal-ID and Jupyter replays with `git range-diff`; record every conflict and why its resolution preserves both sides. Known semantic overlaps include `has_props.ts`, BokehJS document tests, `embed/index.ts`, and embed tests.
 5. Run `git diff --check` on every branch range.
-6. Run branch-local focused tests through `bokeh-embed`: construction, deserialization, rollback, and factory-enforcement tests on 01; lifecycle/framework tests on 02; those plus minimal serialization/deserialization tests on 03; artifact schema, loader, retained-facade/migration, and cross-language tests on 04; Sphinx unit/full-build/browser budgets on 05; the complete notebook matrix plus framework/mount smoke tests on 06; and the Panel downstream apply, focused, build, lint, and browser probes on 07. Before Python tests, verify the imported Bokeh path and use `python -m pytest -o pythonpath=src ...`.
+6. Run branch-local focused tests through `bokeh-embed`: construction, deserialization, rollback, and factory-enforcement tests on 01; lifecycle/framework tests on 02; those plus minimal serialization/deserialization tests on 03; artifact schema, loader, retained-facade/migration, and cross-language tests on 04; Sphinx unit/full-build/browser budgets on 05; the complete notebook matrix plus framework/mount smoke tests on 06; target-local discovery/removal checks on 07; and the Panel downstream apply, focused, build, lint, and browser probes on 08. Before Python tests, verify the imported Bokeh path and use `python -m pytest -o pythonpath=src ...`.
 7. Confirm each task's worktree starts from its named branch and no task silently forks from the repository default branch.
 8. After every EMBED 00 contract commit, restack EMBED 01 through the current top branch sequentially and repeat adjacent-ancestry and `git diff --check` verification.
 9. Keep source branches and old tasks until range-diffs, test results, unresolved known blockers, and task/branch/worktree mappings are recorded in `outputs/embed-stack-verification.md`.

@@ -364,17 +364,21 @@ await handle.dispose()
 
 `mount()` should accept direct elements as the primary form, with IDs/selectors as conveniences. It should support all roots at once and, where the document model allows it, mounting an additional root later through the same handle. It should never expose the Python `RenderItem` structure as its primary API.
 
-`EmbedHandle` should provide:
+`BokehMount` provides:
 
 - `ready: Promise<void>`;
 - the deserialized `Document`;
 - root-key-to-model/view accessors;
 - the server `ClientSession`, when present, through a documented interface;
 - structured error events or callback;
-- idempotent `dispose()` that removes views, unregisters global compatibility entries, closes/evicts server sessions, and releases listeners;
+- idempotent `dispose()` that removes views, unpublishes target-local handles, closes/evicts server sessions, and releases listeners;
 - an optional state/status useful for notebook and framework integrations.
 
-The global `Bokeh.index` can remain a compatibility adapter, but new code should not require it.
+The final Bokeh 4 boundary removes `Bokeh.index`, `Bokeh.documents`, and a
+public global view manager. Callers retain the handle, read
+`target.bokehMount`, or await `Bokeh.when_mounted(target, {signal})`. They use
+logical root keys, `mount.view_lookup`, semantic `Model.name`, and explicit
+`CustomJS.args` rather than global model-ID rediscovery.
 
 ### 7. A real resource loader
 
@@ -692,7 +696,7 @@ The notebook renderer should consume the same artifact fixtures as ordinary brow
 
 ### 7. Sphinx extension and full docs-build tests
 
-Add a dedicated `test_bokeh_plot.py` suite covering:
+Add a dedicated `test_bokeh_embed.py` suite covering:
 
 - inline and external source;
 - docstring processing, source placement, line numbers, sample data collection, and error reporting;
@@ -815,7 +819,8 @@ bokehjs/src/lib/embed/
 ### Phase 4: Sphinx/docs conversion
 
 - Add context-based output capture.
-- Convert `bokeh-plot` to artifact nodes and page aggregation.
+- Replace legacy `bokeh-plot` with canonical `bokeh-embed`, artifact nodes, and
+  page aggregation.
 - Add deterministic generated assets and exact page resource unions.
 - Establish docs build/browser budgets.
 - Remove the docs dependency on `autoload_static()`.
@@ -837,7 +842,15 @@ This phase must land before removing `autoload_static()` because it is the large
 - Add explicit migration errors for removed APIs where they are more helpful than a missing symbol or generic type error.
 - Delete temporary conversion layers before they become a second supported architecture.
 
-### Phase 7: Panel downstream impact and patch proposal
+### Phase 7: Global view-index cleanup
+
+Remove `Bokeh.index`, `Bokeh.documents`, and public `view_manager` exposure.
+Make target publication and retained `BokehMount` handles the only external
+discovery contract. Migrate export and documentation to `root()`, `view()`,
+`target()`, `root_keys`, `document`, `view_lookup`, semantic model names, and
+explicit callback arguments.
+
+### Phase 8: Panel downstream impact and patch proposal
 
 Treat the completed Bokeh 4.0 embedding stack as the input, then evaluate Panel as a downstream consumer rather than allowing it to redefine the core contract:
 
@@ -849,10 +862,12 @@ Treat the completed Bokeh 4.0 embedding stack as the input, then evaluate Panel 
 - do not add a Bokeh compatibility shim solely to preserve Panel internals when Panel can migrate cleanly.
 
 The final deliverable is an evidence-backed impact assessment plus an applicable
-35-file Panel diff at revision
+45-file Panel diff at revision
 `be0b5e2b0955a38a8871aa3fc1703b57c76c1e81`. The diff is exercised against the
-completed stack and keeps unsupported WASM transport paths behind explicit
-migration errors instead of fabricating compatibility.
+completed stack through `codex/embed-07-view-index-cleanup` at
+`159f97de9eb8bdd24c363c50095bdb6565c4a002`. It removes Panel's global view
+fallbacks and keeps unsupported WASM transport paths behind explicit migration
+errors instead of fabricating compatibility.
 
 ### Panel audit refinements to the shared contract
 
@@ -866,7 +881,11 @@ Implemented seams that Panel can consume directly are:
 2. `mount_artifact_declaration()` stores the created handle as
    `target.bokehMount`, exposing readiness, errors, and disposal without a
    global mount registry.
-3. Patch-bearing static output can choose protocol-full serialization through
+3. `Bokeh.when_mounted(target, {signal})`, `mount.root()`/`view()`/`target()`,
+   `root_keys`, `document`, and `view_lookup` cover external target-local
+   discovery after removal of the global view index. Semantic names and
+   explicit `CustomJS.args` cover model lookup and callback ownership.
+4. Patch-bearing static output can choose protocol-full serialization through
    `notebook_content(..., live=True)`. Panel therefore does not need a global
    exception to graph-minimal static IDs. A source-neutral public export of the
    underlying `embed_protocol()` compiler would improve naming outside
@@ -933,6 +952,9 @@ The redesign is ready to become the default when all of the following are true:
 - Python and BokehJS share versioned artifact fixtures, including minimal IDs, cycles, key reordering, custom extensions, and buffers.
 - A core embed followed by a widget embed works in every load ordering and cache state.
 - `mount()` has caller-visible readiness, structured errors, selective roots, and idempotent disposal for standalone and server sources.
+- no supported consumer depends on `Bokeh.index`, `Bokeh.documents`, or a
+  public global view manager; target-local discovery and retained handles cover
+  every supported host workflow.
 - The docs build emits no per-plot loaders, no Bokeh assets on plot-free pages, and only one copy of each page requirement.
 - The current 300 directives build in parallel and incremental modes with deterministic asset names.
 - Notebook cold-cache, export, comms, clearing, and server-app cases pass browser tests.

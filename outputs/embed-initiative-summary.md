@@ -35,7 +35,13 @@ Minimal model IDs become the default for static artifacts while live server, pat
 
 ## Primary in-tree success case: documentation builds
 
-Change `bokeh-plot` from a per-plot autoload generator into an explicit output-capture and page-aggregation pipeline. A page with plots receives one page artifact/payload, one lightweight bootstrap, and each actually required bundle once. A page without plots receives no BokehJS. Generated names are deterministic, incremental and parallel builds are supported, stale assets are tracked, and non-HTML builders receive an accessible fallback.
+Replace the legacy `bokeh-plot` surface with the canonical `bokeh-embed`
+extension and directive, backed by explicit output capture and page aggregation.
+A page with embedded content receives one page artifact/payload, one lightweight
+bootstrap, and each actually required bundle once. A page without embedded
+content receives no BokehJS. Generated names are deterministic, incremental and
+parallel builds are supported, stale assets are tracked, and non-HTML builders
+receive an accessible fallback.
 
 This makes the docs build both a major performance win and the strongest static integration test for the new artifact/resource architecture.
 
@@ -47,11 +53,15 @@ Jupyter follows the common artifact/runtime work. Static display, live handles, 
 
 Panel is the final downstream validation layer. The completed audit pinned Panel
 at `be0b5e2b0955a38a8871aa3fc1703b57c76c1e81` and produced an applicable
-35-file migration diff. Static HTML, templates, protocol-full state replay,
+45-file migration diff against `codex/embed-07-view-index-cleanup` at
+`159f97de9eb8bdd24c363c50095bdb6565c4a002`. Static HTML, templates,
+protocol-full state replay,
 notebook initial display, Tornado server pages/autoload compatibility, BokehJS
 4 extension APIs, readiness/errors, and mount disposal are mapped to the common
-stack. Pyodide/PyScript is explicitly rejected until its transport is rewritten;
-no Bokeh legacy envelope was restored for Panel.
+stack. Panel uses retained handles, `target.bokehMount`, and
+`Bokeh.when_mounted()`; there is no `Bokeh.index`, `Bokeh.documents`, or public
+global view manager. Pyodide/PyScript is explicitly rejected until its transport
+is rewritten; no Bokeh legacy envelope was restored for Panel.
 
 The audit also corrected earlier assumptions: token-bearing server artifacts and
 declarative mount observability already exist. Remaining reusable gaps are
@@ -67,9 +77,10 @@ EMBED 01 Lifecycle-aware BokehJS model factories and rollback
 EMBED 02  BokehJS mount lifecycle and framework adapters
 EMBED 03  Minimal IDs integrated with lifecycle-safe construction
 EMBED 04  Artifact compiler, renderers, resource resolver/loader, retained facades and migration errors
-EMBED 05  Sphinx and bokeh-plot page aggregation
+EMBED 05  Sphinx bokeh-embed page aggregation
 EMBED 06  Jupyter and notebook host adapters
-EMBED 07  Panel downstream impact assessment and patch proposal
+EMBED 07  Global view-index and document-registry cleanup
+EMBED 08  Panel downstream impact assessment and patch proposal
 ```
 
 The branches are intentionally stackable in that order. Lifecycle-aware model construction is a factored prerequisite for framework mounting, which precedes minimal-ID conflict resolution; all three precede the artifact/runtime that consumes them. Sphinx is the first production static consumer. Jupyter validates the most demanding live-host cases. Panel runs last as a downstream compatibility audit against the completed design.
@@ -78,7 +89,7 @@ The branches are intentionally stackable in that order. Lifecycle-aware model co
 
 Treat cross-language fixtures and host lifecycle tests as part of the design, not cleanup. Required coverage includes schema compatibility and errors, anonymous/shared/cyclic graphs, keyed multi-root and shared-document mounting, sequential/concurrent additive resource loading, disposal and rollback leak tests, every retained facade and 4.0 migration diagnostic, page-level docs resource/request budgets, notebook output replacement and virtualization, bounded patch buffers, comm failures/timeouts, renderer rerender/disposal, trust/removal, safe and concurrent exports, and explicitly executed AnyWidget/marimo CI jobs.
 
-All eight tasks run project commands through `/Users/bryan/anaconda3/bin/conda run -n bokeh-embed ...`. Python tests use `python -m pytest -o pythonpath=src ...` after verifying the import path; the shared environment must not be repointed with an editable install.
+All nine tasks run project commands through `/Users/bryan/anaconda3/bin/conda run -n bokeh-embed ...`. Python tests use `python -m pytest -o pythonpath=src ...` after verifying the import path; the shared environment must not be repointed with an editable install.
 
 ## Definition of done
 

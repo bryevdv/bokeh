@@ -1,7 +1,6 @@
-/Users/bryan/.zlogin:9: nice(5) failed: operation not permitted
 # EMBED replacement stack verification
 
-This report is completed as branches and replacement tasks evolve. It supplements the verification protocol in `outputs/embed-stack-context.md`. The table records the fully tested tips immediately before the explicit EMBED 01 task and 00–07 renumbering handoff. The final handoff reports the rewritten tips because every EMBED 00 coordination commit intentionally rewrites descendant commit IDs.
+This report is completed as branches and replacement tasks evolve. It supplements the verification protocol in `outputs/embed-stack-context.md`. The historical rows preserve the earlier replay tips; the final rows record the EMBED 06–08 handoff after the global view-index cleanup. A commit cannot record its own final SHA, so the EMBED 08 tip is reported in the handoff.
 
 ## Source baselines
 
@@ -22,14 +21,41 @@ This report is completed as branches and replacement tasks evolve. It supplement
 | EMBED 03 | `01a0211a-4488-7df0-bfa7-5c22b4c971dc` | `codex/embed-03-minimal-ids` | `codex/embed-02-mount-frameworks` | `/Users/bryan/work/trees/0014/bokeh-embed` | clean tip `8fa48cf74af8`; eight reviewable commits |
 | EMBED 04 | `01a0211a-4484-7940-9c23-bdf06ed1ea90` | `codex/embed-04-artifact-runtime` | `codex/embed-03-minimal-ids` | `/Users/bryan/work/trees/feaa/bokeh-embed` | clean tip `839d97158235`; four reviewable commits |
 | EMBED 05 | `01a0211a-448c-7972-a2f4-a520c273bb1b` | `codex/embed-05-sphinx` | `codex/embed-04-artifact-runtime` | `/Users/bryan/work/trees/1395/bokeh-embed` | clean tip `f80333b8b012`; five reviewable commits |
-| EMBED 06 | `01a0211a-4485-7252-bac5-69f9c48ab768` | `codex/embed-06-jupyter` | `codex/embed-05-sphinx` | `/Users/bryan/work/trees/ad10/bokeh-embed` | clean tip `58fbd4f39602`; four reviewable commits |
-| EMBED 07 | `01a02132-f4ed-7d20-a67c-0db3e4478ef6` | `codex/embed-07-panel` | `codex/embed-06-jupyter` | `/Users/bryan/work/trees/e94b/bokeh-embed` | clean tip `2d6d0bf475de`; two reviewable commits; preserved as `backup/embed-07-panel-pre-renumbering-2d6d0bf475` |
+| EMBED 06 | `01a0211a-4485-7252-bac5-69f9c48ab768` | `codex/embed-06-jupyter` | `codex/embed-05-sphinx` | `/Users/bryan/work/trees/ad10/bokeh-embed` | finalized tip `885d319d5cfb19644538b559c94b7f1047475d14` |
+| EMBED 07 | `01a02590-20e6-73d1-848f-1b34bdad2b47` | `codex/embed-07-view-index-cleanup` | `codex/embed-06-jupyter` | `/Users/bryan/work/trees/4840/bokeh-embed` | finalized/published tip `159f97de9eb8bdd24c363c50095bdb6565c4a002`, PR #10 |
+| EMBED 08 | `01a02132-f4ed-7d20-a67c-0db3e4478ef6` | `codex/embed-08-panel` | `codex/embed-07-view-index-cleanup` | `/Users/bryan/work/trees/e94b/bokeh-embed` | clean local-only tip `ba2f6dbb82b0b44c520e5f73dab1ab06be6fd9af`; pre-restack state preserved as `backup/embed-08-panel-pre-view-index-7378a1fd31` |
 
 The project worktree `/Users/bryan/work/trees/bokeh-embed` is detached at the pre-handoff EMBED 00 contract tip and owns no stack branch.
 
+## Final public Bokeh PR stack
+
+Live readback on 2026-08-21 verified that every PR is open and draft, has the
+exact adjacent base and head below, starts with `[codex-assisted]`, contains a
+high-level user/reviewer summary and relevant code, links its user migration
+note, and ends with a LOC table split across library code, documentation, tests,
+examples, and tooling/generated/locks.
+
+| Layer | PR | Base | Head tip |
+|---|---|---|---|
+| EMBED 01/07 | [#2](https://github.com/bryevdv/bokeh/pull/2) | `branch-4.0` at `e40959e7da00157ff732a82e0bd428889c18e471` | `dace1decfba5e0d154c8721053f7e5fdad261ea8` |
+| EMBED 02/07 | [#3](https://github.com/bryevdv/bokeh/pull/3) | `codex/embed-01-model-factories` | `3ea18a3ebe55193f8172171ad5d0b25f117b1dd7` |
+| EMBED 03/07 | [#4](https://github.com/bryevdv/bokeh/pull/4) | `codex/embed-02-mount-frameworks` | `af82c7f8817dec993b6ae5d57a49d0f53ec6baf8` |
+| EMBED 04/07 | [#5](https://github.com/bryevdv/bokeh/pull/5) | `codex/embed-03-minimal-ids` | `fb2efc01ca5ccaa7661bbc932354c3594393b5bb` |
+| EMBED 05/07 | [#6](https://github.com/bryevdv/bokeh/pull/6) | `codex/embed-04-artifact-runtime` | `fd48043d50c8b36926bec0a6838dc6b2d3226c77` |
+| EMBED 06/07 | [#7](https://github.com/bryevdv/bokeh/pull/7) | `codex/embed-05-sphinx` | `885d319d5cfb19644538b559c94b7f1047475d14` |
+| EMBED 07/07 | [#10](https://github.com/bryevdv/bokeh/pull/10) | `codex/embed-06-jupyter` | `159f97de9eb8bdd24c363c50095bdb6565c4a002` |
+
+The [shared architecture and verification gist](https://gist.github.com/bryevdv/1da477902b19eb6e08e65725e47d80b1)
+matches the four durable EMBED 00 documents byte-for-byte. The
+[shared user-migration gist](https://gist.github.com/bryevdv/7139e2f1ad7b099737f46aab542aefc0)
+contains exactly `embed-01-model-factories.md` through
+`embed-07-global-index.md`; no stale EMBED 08 cleanup file remains. Closed PR #9
+is retained only as the historical record of GitHub closing the old PR when its
+head branch was renamed.
+
 ## Dedicated environment
 
-Every project command on all eight tasks uses:
+Every project command on all nine tasks uses:
 
 ```text
 /Users/bryan/anaconda3/bin/conda run -n bokeh-embed ...
@@ -66,7 +92,8 @@ The environment came from `conda/environment-test-3.13.yml` and contains Python 
 | 04 | schema fixtures, Python compiler/renderers, BokehJS mount/loader, retained-facade and migration matrix | passed; see the detailed EMBED 04 evidence below |
 | 05 | Sphinx unit tests, incremental/parallel/full docs builds, browser tests, size/request budgets | passed; see the detailed EMBED 05 evidence below |
 | 06 | source frontend units, packaged-runtime tests, notebook Python/protocol tests, AnyWidget/marimo CI, Playwright, common mount smoke | passed; see the detailed EMBED 06 evidence and `embed-06-jupyter-measurements.md` |
-| 07 | Panel impact inventory, Bokeh 4.0 workflow mapping, applicable diff, focused and browser downstream validation | complete against Panel `be0b5e2b0955a38a8871aa3fc1703b57c76c1e81`; applicable 35-file patch, 133 focused passes/77 optional skips, extension/TypeScript/lint/build checks, and static/server/autoload browser lifecycle probes |
+| 07 | remove global view/document registries and migrate discovery/export/docs to target-local mounts | finalized at `159f97de9eb8bdd24c363c50095bdb6565c4a002`; supplied coordination handoff, PR #10; exact ancestry independently verified by EMBED 08 |
+| 08 | Panel impact inventory, Bokeh 4.0 workflow mapping, applicable diff, focused and browser downstream validation | complete against Panel `be0b5e2b0955a38a8871aa3fc1703b57c76c1e81`; applicable 45-file patch, 137 focused passes/77 optional skips, extension/TypeScript/lint/build checks, and static/server/autoload browser lifecycle probes |
 
 The earlier EMBED 03 `dev313` run that failed five tests imported an editable primary checkout. It is classified as wrong-source contamination, not a branch failure. The clean 129/129 result above is the valid branch evidence.
 
@@ -361,10 +388,10 @@ the only environment-limited check; the exact production static and connected
 adapter contracts are unit-tested and the documentation labels the hosted
 smoke test as pending rather than claiming it passed.
 
-EMBED 07 was rerun against the actual completed EMBED 01–06 Python and
-BokehJS APIs. The earlier conceptual assessment remains only as provenance; its
-speculative existing-session, declarative-mount, and blanket ID-retention gaps
-were replaced with observed API evidence.
+EMBED 08 was rerun against the completed EMBED 01–07 Python and BokehJS APIs,
+with exact parent `159f97de9eb8bdd24c363c50095bdb6565c4a002`. The earlier
+Panel assessment remains provenance only. Final evidence includes removal of
+`Bokeh.index`, `Bokeh.documents`, and public global view-manager discovery.
 
 ## Bokeh 4.0 compatibility evidence
 
@@ -378,11 +405,11 @@ Every 3.x embedding use case must have a tested 4.0 route and migration recipe. 
 | Authoritative source | disposable shallow clone of `https://github.com/holoviz/panel.git`; independent clean snapshots used for apply/test validation; no user checkout or GitHub mutation |
 | Revision | `be0b5e2b0955a38a8871aa3fc1703b57c76c1e81`, `main`, 2026-08-20, `Make Tabulator edits more robust (#8731)` |
 | Panel version boundary at revision | Panel JS `1.9.4`; Python `bokeh >=3.7,<3.10`; JavaScript `@bokeh/bokehjs ^3.9.2` |
-| Completed API inspection | Python `embed`, `embed_server`, `notebook_content(live=True)`, artifact renderers/resource policies; BokehJS `mount`, `BokehMount`, declaration target handles, server ownership, attach/detach/dispose; EMBED 06 protocol-2 and `StandaloneMount` decisions |
+| Completed API inspection | Python `embed`, `embed_server`, `notebook_content(live=True)`, artifact renderers/resource policies and mount-aware export; BokehJS `mount`, `when_mounted`, target `bokehMount`, `BokehMount` root/view/target/document/session/view-lookup access, attach/detach/dispose; EMBED 06 protocol-2 and `StandaloneMount`; EMBED 07 global-registry removal |
 | Downstream inventory | static HTML/state/PNG, templates and multi-root placement, notebook/PyViz/Jupyter preview, Panel Tornado/Django/FastAPI server paths, Pyodide/PyScript conversion, custom extension resources, React/ReactiveESM/AnyWidget models, disposal, docs/Sphinx/JupyterLite, packaging, and CI |
-| Applicable diff | `outputs/panel-bokeh-4.0.patch`; 35 files, 497 insertions, 381 deletions; clean `git apply --check`, apply, and `git diff --check` |
+| Applicable diff | `outputs/panel-bokeh-4.0.patch`; SHA-256 `e6a8e70fb31fc21e22801c66895a0a97b37f3aca77d6bccd0bfb247ec79122fd`; 45 files, 657 insertions, 631 deletions; clean independent `git apply --check`, apply, and `git diff --check` |
 | Draft boundary | Python `bokeh >=4.0.0.dev1,<4.1.0`; JavaScript `@bokeh/bokehjs ^4.0.0-dev.1`; intended for a breaking Panel line, not Panel 1.9 maintenance |
-| Explicit residual | Bokeh 4 Pyodide/PyScript conversion raises a targeted migration error until its RenderItem/JsonItem worker transport becomes artifact/mount based |
+| Explicit residual | Bokeh 4 Pyodide/PyScript conversion raises a targeted migration error until its RenderItem/JsonItem worker transport becomes artifact/mount based; no Bokeh 3 compatibility branch remains |
 | Runtime import | Bokeh `/Users/bryan/work/trees/e94b/bokeh-embed/src/bokeh/__init__.py`, `4.0.0.dev1+42.ga6485cdf`; Panel imported from each disposable patched snapshot using temporary dependency files, without an editable install |
 
 Final source evidence corrected the conceptual gap list:
@@ -390,6 +417,10 @@ Final source evidence corrected the conceptual gap list:
 - `embed_server(token=..., roots=...)` already supports an existing session;
 - `mount_artifact_declaration()` already exposes its handle as
   `target.bokehMount`;
+- `Bokeh.when_mounted(target, {signal})`, retained handles, `root()`/`view()`/
+  `target()`, `root_keys`, `document`, and `view_lookup` replace global view
+  discovery; semantic names and explicit `CustomJS.args` replace model-ID
+  searches;
 - Panel static state can select protocol-full serialization rather than adding
   a blanket static-ID exception.
 
@@ -406,18 +437,22 @@ The extension finding is measured: a single Panel Button artifact included a
 768,401-byte inline `panel.min.js` requirement and was 787,958 bytes even though
 the Panel page separately owned the same bundle.
 
-## EMBED 07 validation evidence
+## EMBED 08 validation evidence
 
 ### Worktree and history
 
 - worktree: `/Users/bryan/work/trees/e94b/bokeh-embed`;
-- branch: `codex/embed-07-panel`;
-- pre-renumbering parent: `codex/embed-06-jupyter` at
-  `58fbd4f39602455d80622c69b2b70bbb440b2945`;
-- pre-final assessment commit: `6f0cb9211b3ae90efe5aa3f2a1685796673f0afb`,
-  retained as `backup/embed-06-panel-pre-final-6f0cb9211b`;
-- final tip and coherent assessment/patch/validation commits are reported at
-  handoff because the verification commit cannot contain its own SHA.
+- branch: `codex/embed-08-panel`;
+- exact parent: `codex/embed-07-view-index-cleanup` at
+  `159f97de9eb8bdd24c363c50095bdb6565c4a002`;
+- parent is based on EMBED 06 at
+  `885d319d5cfb19644538b559c94b7f1047475d14`;
+- pre-restack Panel series retained as
+  `backup/embed-08-panel-pre-view-index-7378a1fd31`;
+- final tip: `ba2f6dbb82b0b44c520e5f73dab1ab06be6fd9af`;
+- reviewable commits: `4d08dfa981` (contract/assessment), `db543187d2`
+  (applicable Panel patch), and `ba2f6dbb82` (validation ledger);
+- pre-hygiene tip preserved as `backup/embed-08-panel-pre-hygiene-d84c169e29`.
 
 ### Patch applicability
 
@@ -427,37 +462,42 @@ An independent clean Panel clone at the pinned revision passed:
 - `git apply outputs/panel-bokeh-4.0.patch`;
 - `git diff --check`.
 
-Temporary wheel-built Panel distribution assets were copied only into the
-disposable validation clones. No Panel checkout under `/Users/bryan/work` was
-created or modified.
+The final hygiene pass normalized 136 patch-file lines containing only a
+unified-diff context-prefix space to empty lines. This changes outer EMBED
+additions from `+ ` to `+` without changing meaningful indentation or Panel
+content. The independently applied tree passed the same checks at patch
+SHA-256 `e6a8e70fb31fc21e22801c66895a0a97b37f3aca77d6bccd0bfb247ec79122fd`.
+
+Generated Panel distribution/vendor assets and a final-source BokehJS build
+were supplied only inside disposable validation directories. No user Panel
+checkout was created or modified.
 
 ### Python validation
 
 | Check | Result |
 |---|---|
 | Bokeh import | exact worktree path and `4.0.0.dev1+42.ga6485cdf` |
-| Panel import | exact independent temporary patched checkout |
-| Ruff on changed Python/tests | passed |
+| Panel import | exact independent temporary patched checkout; `panel.command` also imported |
+| Ruff over all `panel` | passed |
 | `python -m compileall -q panel` | passed |
-| final affected suite: artifact/save/notebook/server | 133 passed, 77 skipped in 29.72s |
-| isolated rerun of `test_server_thread_pool_bokeh_event[tornado]` | 1 passed in 0.85s |
+| final affected suite: artifact/converter/save/notebook/state/server | 137 passed, 77 skipped in 29.49s |
+| independent applied-snapshot converter migration test | 1 passed in 0.02s |
 
-One prior complete run reported `131 passed, 77 skipped, 1 failed` because it
-timed out while observing a transient `_pending_edits` marker after the event
-had already completed; captured logs showed all five events were processed, and
-the isolated rerun passed. A separate clean snapshot initially produced 16
-failures because generated `panel/dist` fixtures were absent. After copying the
-same temporary wheel-built assets used in the first clean clone, it produced the
-final 133/77 result. These attempts are retained here rather than hidden.
+Initial save/notebook fixture runs failed because generated BokehJS/Panel
+distribution and vendor assets were absent from the clean source snapshot.
+After supplying those normal generated assets in the disposable validation
+tree, the same tests passed. The first browser server launch exposed a genuine
+import-time `RenderItem` dependency in `panel/io/convert.py`; removing that dead
+Bokeh 3 implementation from the Bokeh 4-only path fixed `panel.command` and
+`panel serve` startup and added an explicit converter-boundary test.
 
 ### JavaScript/build validation
 
 | Check | Result |
 |---|---|
-| BokehJS `npm ci` | passed; 924 packages; audit reported 12 existing vulnerabilities |
-| completed local BokehJS build | passed |
-| Panel `npm ci` | passed; 162 packages; audit reported one existing high vulnerability |
-| Panel extension build against completed local BokehJS source | passed |
+| completed final BokehJS library build | passed |
+| completed final BokehJS full build | passed |
+| Panel extension compiler against completed local BokehJS source | passed; 85 TypeScript files |
 | full `tsc --noEmit --pretty false` | passed |
 | ESLint | passed with 0 errors and 261 pre-existing warnings |
 
@@ -469,23 +509,26 @@ independent build and avoids misclassifying package drift as a patch failure.
 
 ### Browser validation
 
-Playwright used locally available Chrome and failed on unexpected console
-errors. It exercised two-root static output, a three-root direct Panel server
-session, and Panel autoload output. Final observation:
+Playwright used headless Chromium and failed on unexpected console errors. It
+exercised two-root static output, a direct Panel server session, and Panel
+autoload output. Final observation:
 
 ```json
-{"server":{"autoload":{"after":{"disposed":true,"state":"disposed","views":0},"before":{"session":true,"state":"ready","views":3}},"direct":{"after":{"disposed":true,"state":"disposed","views":0},"before":{"roots":["p1011","p1020","p1021"],"session":true,"views":3}},"errors":[]},"static":{"after":{"disposed":true,"state":"disposed","views":0},"before":{"handles":1,"roots":["root-0","root-1"],"views":2},"errors":[]}}
+{"server":{"autoload":{"after":{"disposed":true,"state":"disposed","unpublished":true},"before":{"errors":0,"session":true,"state":"ready"}},"direct":{"after":{"disposed":true,"state":"disposed","unpublished":true},"before":{"errors":0,"root":true,"session":true,"state":"ready","target":true,"view":true}},"errors":[],"globals":{"documents":false,"index":false,"view_manager":false}},"static":{"after":{"disposed":true,"shared_handle":true,"sibling_state":"disposed","sibling_unpublished":true,"state":"disposed","unpublished":true},"before":{"distinct_handles":1,"document_matches":true,"errors":0,"key":"root-0","root_matches":true,"semantic_name":true,"state":"ready","target_matches":true,"targets":["root-0","root-1"],"view_matches":true},"errors":[],"globals":{"documents":false,"index":false,"view_manager":false}}}
 ```
 
-Browser validation found two issues that non-browser checks missed:
+The final browser check additionally proves:
 
-- direct `new Tooltip()` had to become `Tooltip.create()`;
-- Panel's host-owned resource bundle had to include `bokeh-api` so
-  `Bokeh.mount_artifact_declaration()` exists.
+- one shared multi-root handle is published on both targets;
+- logical-key root/view/target access, `view_lookup`, and semantic `Model.name`
+  lookup succeed;
+- direct and DOM-triggered disposal unpublish every target;
+- `Bokeh.index`, `Bokeh.documents`, and public `view_manager` are absent.
 
 ### Environment-limited release checks
 
-Not run: the full Panel suite, full Sphinx/docs/JupyterLite build, hosted
+Not run: the full Panel suite beyond the broad affected set, full
+Sphinx/docs/JupyterLite build, hosted
 classic Notebook/JupyterLab/VS Code/Colab UI, Django, FastAPI, and
 Pyodide/PyScript browser matrices. The 77 skipped cases correspond to optional
 dependencies/integrations and are not claimed as coverage. npm audit findings
