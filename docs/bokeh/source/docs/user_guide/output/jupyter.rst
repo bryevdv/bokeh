@@ -655,6 +655,33 @@ notebook below:
 More example notebooks
 ~~~~~~~~~~~~~~~~~~~~~~
 
+Core-review walkthrough
+''''''''''''''''''''''''
+
+Three short runs expose the important user-facing differences in the 4.0
+notebook host. They intentionally use normal notebook APIs rather than testing
+private renderer hooks:
+
+* **Portable saved output:** run
+  :bokeh-tree:`examples/output/jupyter/automatic_mime.ipynb`, save the notebook,
+  restart the kernel, and reopen it. The final-expression plot remains a static
+  artifact snapshot with an inert fallback for hosts that do not execute its
+  renderer.
+* **Connected output and release:** run
+  :bokeh-tree:`examples/output/jupyter/live/Basic Usage.ipynb`, mutate the data
+  from Python, and observe the existing output update. Reload the browser to
+  exercise snapshot-plus-revision reconnection; clear the output or call
+  ``handle.close()`` to demonstrate that only that view is released.
+* **Static export:** with either notebook open, use the Jupyter **Export to
+  HTML** command or run ``jupyter nbconvert --to bokeh notebook.ipynb``. The
+  exported page contains a browser-captured PNG of the complete current output,
+  while the saved notebook remains unchanged.
+
+Together these cover the three deliberately separate responsibilities: an
+``EmbedArtifact`` persists initial state, the notebook host owns live transport
+and release, and export consumes a one-shot frontend snapshot without creating
+a second runtime or document registry.
+
 You can find many more examples of notebook use in the `bokeh-tutorial`_ repository:
 
 1. Clone the repository locally:
