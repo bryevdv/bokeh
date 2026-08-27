@@ -45,6 +45,7 @@ if TYPE_CHECKING:
         ColumnDataChangedEvent,
         ColumnsPatchedEvent,
         ColumnsStreamedEvent,
+        DocumentPatchedEvent,
         ModelChangedEvent,
     )
     from ..embed.artifact import EmbedArtifact
@@ -323,7 +324,7 @@ class DocumentViewHandle:
         comm.send({
             "kind": "patch",
             "revision": revision,
-            "content": json.loads(message.content_json),
+            "content": message.content,
             "buffer_ids": [buffer.id for buffer in message.buffers],
         }, buffers=[buffer.to_bytes() for buffer in message.buffers])
 
@@ -332,8 +333,8 @@ class DocumentViewHandle:
             return
         if not events or not self._comms:
             return
-        from ..protocol import Protocol as BokehProtocol
-        message = BokehProtocol().create("PATCH-DOC", events)
+        from ..protocol import patch_doc
+        message = patch_doc(events)
         self._revision += 1
         for comm_id, comm in tuple(self._comms.items()):
             try:
