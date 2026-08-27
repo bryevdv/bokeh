@@ -53,7 +53,9 @@ describe("notebook artifact patches", () => {
     const document = {
       apply_json_patch() {
         attempts++
-        if (attempts == 1) throw new Error("model rejected patch")
+        if (attempts == 1) {
+          throw new Error("model rejected patch")
+        }
       },
     } as unknown as Document
     const receive = create_notebook_patch_receiver(document)
