@@ -23,11 +23,40 @@ tracking ref before the replay. Immutable source refs live under
 | EMBED 07 | `ccdb06b46463a3603e0e66abcb4313cab76ed6b5` | `01a05f16-97ea-74e1-880c-c9080e002238` | `/Users/bryan/work/trees/90af/bokeh-embed` |
 | EMBED 08 | `14283682994f881f39de8c0f30723eeef4252a5a` | `01a05f16-a0f0-7c01-9470-af5c8c686193` | `/Users/bryan/work/trees/502b/bokeh-embed` |
 
-Open draft demonstration PRs map to EMBED 01–06 as
+### EMBED 05/06 semantic order correction
+
+The recovered source stack originally placed Sphinx before Jupyter. The final
+review order instead makes Jupyter EMBED 05, directly on EMBED 04, and makes
+Sphinx EMBED 06 so its output-capture hooks target Jupyter's final `show()`,
+`save()`, and `output_file()` APIs. Existing remote branch names are preserved
+to preserve the published branch identities; their numeric prefixes therefore
+remain opposite to their semantic task numbers.
+
+| Semantic layer | Responsibility | Preserved remote branch | Recovered task | Parent | Reordered tip |
+|---|---|---|---|---|---|
+| EMBED 05 | Jupyter and notebook hosts | `codex/embed-06-jupyter` | `01a05f16-9154-7991-84cd-a89dec22093a` | EMBED 04 | `0b5bfbf11c914d5045afce512c3c2e7dbdeb924f` |
+| EMBED 06 | Sphinx and `bokeh-embed` | `codex/embed-05-sphinx` | `01a05f16-8209-7b23-b25d-c8c255cdc31e` | EMBED 05 | `15c0e7824f39eff22117823dd9855043895d049a` |
+| EMBED 07 | global view-index cleanup | `codex/embed-07-view-index-cleanup` | `01a05f16-97ea-74e1-880c-c9080e002238` | EMBED 06 | `20ea756f3f13d6c8ac6c8c6d5949b465eaefc065` |
+
+The reordered EMBED 06 tree is byte-for-byte identical to the pre-swap
+combined Sphinx-plus-Jupyter tree. Immutable pre-swap refs live under
+`refs/codex/embed-stack-pre-05-06-swap-20260901/`.
+
+Open draft demonstration PRs map EMBED 01–04 to
 [#2](https://github.com/bryevdv/bokeh/pull/2) through
-[#7](https://github.com/bryevdv/bokeh/pull/7), and EMBED 07 is
+[#5](https://github.com/bryevdv/bokeh/pull/5), EMBED 05 to
+[#11](https://github.com/bryevdv/bokeh/pull/11), EMBED 06 to
+[#6](https://github.com/bryevdv/bokeh/pull/6), and EMBED 07 to
 [#10](https://github.com/bryevdv/bokeh/pull/10). EMBED 00 and EMBED 08 are
 supporting stack branches without open PRs.
+
+GitHub automatically closed and marked the former Jupyter PR
+[#7](https://github.com/bryevdv/bokeh/pull/7) merged when the reorder made its
+head an ancestor of its pre-reorder Sphinx base. This did not move
+`branch-4.0`, which remained at
+`76cdca4f973e1bc1e0e18c3491afb9e8524d8e55`. Replacement PR #11 preserves the
+Jupyter review diff, and the seven open drafts are linked in corrected order as
+GitHub stack #12.
 
 The current repository workflow is the committed `pixi.toml`/`pixi.lock`
 environment. Each fresh recovered worktree runs `pixi run --locked setup`
@@ -40,56 +69,34 @@ Final rewritten branch and PR tips, test evidence, and remote readback belong in
 the coordinator handoff because recording descendant SHAs here would change
 their parent and invalidate those same SHAs.
 
+## Historical 2026-08-27 source-stack restack
+
 ## Source baselines
 
 | Source | Tip | Status |
 |---|---|---|
-| `branch-4.0` | `e40959e7da00157ff732a82e0bd428889c18e471` | recorded |
+| `branch-4.0` | `ae1c4bc298c16f0c375fc0ea88392351200b55f7` | latest `bryevdv/bokeh` tip after the 2026-08-27 upstream sync |
 | `bokehjs-framework-integration` | `25d555da5b3919a8b70bc3e40fa991840f1be0e5` | recorded and retained |
 | `minimal-ids` | `4b54c421bc747a42a802c70093aaa8f6c5fc9bab` | recorded and retained |
 | `poc/jupyter-integration-4.0` | `00136fe8f59b6f2498efcacd7012ea6b19d97a32` | recorded and retained |
 
 ## Branch and task mapping
 
-| Task | Task ID | Branch | Parent | Worktree | Pre-renumbering state |
+| Task | Task ID | Branch | Parent | Worktree | Current reviewed state |
 |---|---|---|---|---|---|
-| EMBED 00 | `01a0211a-448a-74f2-a484-edd558f855af` | `codex/embed-00-contract` | `branch-4.0` | `/Users/bryan/work/trees/53c9/bokeh-embed` | clean tip `7e147a8e80d4`; four coordination commits |
-| EMBED 01 | `01a024dc-64df-7d10-9de5-f37814af9441` | `codex/embed-01-model-factories` | `codex/embed-00-contract` | `/Users/bryan/work/trees/780c/bokeh-embed` | clean tip `300b76bfe905`; three reviewable prerequisite commits |
-| EMBED 02 | `01a0211a-4486-7e82-bba7-9d282d76fa5c` | `codex/embed-02-mount-frameworks` | `codex/embed-01-model-factories` | `/Users/bryan/work/trees/623b/bokeh-embed` | clean tip `19a7335c40a0`; 12 reviewable commits with exact pre-split tree equivalence |
-| EMBED 03 | `01a0211a-4488-7df0-bfa7-5c22b4c971dc` | `codex/embed-03-minimal-ids` | `codex/embed-02-mount-frameworks` | `/Users/bryan/work/trees/0014/bokeh-embed` | clean tip `8fa48cf74af8`; eight reviewable commits |
-| EMBED 04 | `01a0211a-4484-7940-9c23-bdf06ed1ea90` | `codex/embed-04-artifact-runtime` | `codex/embed-03-minimal-ids` | `/Users/bryan/work/trees/feaa/bokeh-embed` | clean tip `839d97158235`; four reviewable commits |
-| EMBED 05 | `01a0211a-448c-7972-a2f4-a520c273bb1b` | `codex/embed-05-sphinx` | `codex/embed-04-artifact-runtime` | `/Users/bryan/work/trees/1395/bokeh-embed` | clean tip `f80333b8b012`; five reviewable commits |
-| EMBED 06 | `01a0211a-4485-7252-bac5-69f9c48ab768` | `codex/embed-06-jupyter` | `codex/embed-05-sphinx` | `/Users/bryan/work/trees/ad10/bokeh-embed` | finalized tip `885d319d5cfb19644538b559c94b7f1047475d14` |
-| EMBED 07 | `01a02590-20e6-73d1-848f-1b34bdad2b47` | `codex/embed-07-view-index-cleanup` | `codex/embed-06-jupyter` | `/Users/bryan/work/trees/4840/bokeh-embed` | finalized/published tip `159f97de9eb8bdd24c363c50095bdb6565c4a002`, PR #10 |
-| EMBED 08 | `01a02132-f4ed-7d20-a67c-0db3e4478ef6` | `codex/embed-08-panel` | `codex/embed-07-view-index-cleanup` | `/Users/bryan/work/trees/e94b/bokeh-embed` | clean local-only tip `ba2f6dbb82b0b44c520e5f73dab1ab06be6fd9af`; pre-restack state preserved as `backup/embed-08-panel-pre-view-index-7378a1fd31` |
+| EMBED 00 | `01a0211a-448a-74f2-a484-edd558f855af` | `codex/embed-00-contract` | `branch-4.0` | `/Users/bryan/work/trees/53c9/bokeh-embed` | clean tip `37a00df2422c`; eight coordination/review commits |
+| EMBED 01 | `01a024dc-64df-7d10-9de5-f37814af9441` | `codex/embed-01-model-factories` | `codex/embed-00-contract` | `/Users/bryan/work/trees/780c/bokeh-embed` | clean tip `cd0f54573c78`; six reviewable commits |
+| EMBED 02 | `01a0211a-4486-7e82-bba7-9d282d76fa5c` | `codex/embed-02-mount-frameworks` | `codex/embed-01-model-factories` | `/Users/bryan/work/trees/623b/bokeh-embed` | clean tip `3d94c5a34eb1`; 19 reviewable commits |
+| EMBED 03 | `01a0211a-4488-7df0-bfa7-5c22b4c971dc` | `codex/embed-03-minimal-ids` | `codex/embed-02-mount-frameworks` | `/Users/bryan/work/trees/0014/bokeh-embed` | clean tip `890181aa712d`; nine reviewable commits |
+| EMBED 04 | `01a0211a-4484-7940-9c23-bdf06ed1ea90` | `codex/embed-04-artifact-runtime` | `codex/embed-03-minimal-ids` | `/Users/bryan/work/trees/feaa/bokeh-embed` | clean tip `28736cabafd9`; 13 reviewable commits |
+| EMBED 05 | `01a0211a-448c-7972-a2f4-a520c273bb1b` | `codex/embed-05-sphinx` | `codex/embed-04-artifact-runtime` | `/Users/bryan/work/trees/1395/bokeh-embed` | clean tip `167e75b03e41`; seven reviewable commits |
+| EMBED 06 | `01a0211a-4485-7252-bac5-69f9c48ab768` | `codex/embed-06-jupyter` | `codex/embed-05-sphinx` | `/Users/bryan/work/trees/ad10/bokeh-embed` | clean tip `9117e083f53c`; ten reviewable commits |
+| EMBED 07 | coordination handoff | `codex/embed-07-view-index-cleanup` | `codex/embed-06-jupyter` | `/Users/bryan/work/trees/4840/bokeh-embed` | clean tip `ccdb06b46463`; four reviewable commits |
+| EMBED 08 | `01a02132-f4ed-7d20-a67c-0db3e4478ef6` | `codex/embed-08-panel` | `codex/embed-07-view-index-cleanup` | `/Users/bryan/work/trees/e94b/bokeh-embed` | six-commit assessment/patch/verification series; final tip reported at handoff |
 
-The project worktree `/Users/bryan/work/trees/bokeh-embed` is detached at the pre-handoff EMBED 00 contract tip and owns no stack branch.
-
-## Final public Bokeh PR stack
-
-Live readback on 2026-08-21 verified that every PR is open and draft, has the
-exact adjacent base and head below, starts with `[codex-assisted]`, contains a
-high-level user/reviewer summary and relevant code, links its user migration
-note, and ends with a LOC table split across library code, documentation, tests,
-examples, and tooling/generated/locks.
-
-| Layer | PR | Base | Head tip |
-|---|---|---|---|
-| EMBED 01/07 | [#2](https://github.com/bryevdv/bokeh/pull/2) | `branch-4.0` at `e40959e7da00157ff732a82e0bd428889c18e471` | `dace1decfba5e0d154c8721053f7e5fdad261ea8` |
-| EMBED 02/07 | [#3](https://github.com/bryevdv/bokeh/pull/3) | `codex/embed-01-model-factories` | `3ea18a3ebe55193f8172171ad5d0b25f117b1dd7` |
-| EMBED 03/07 | [#4](https://github.com/bryevdv/bokeh/pull/4) | `codex/embed-02-mount-frameworks` | `af82c7f8817dec993b6ae5d57a49d0f53ec6baf8` |
-| EMBED 04/07 | [#5](https://github.com/bryevdv/bokeh/pull/5) | `codex/embed-03-minimal-ids` | `fb2efc01ca5ccaa7661bbc932354c3594393b5bb` |
-| EMBED 05/07 | [#6](https://github.com/bryevdv/bokeh/pull/6) | `codex/embed-04-artifact-runtime` | `fd48043d50c8b36926bec0a6838dc6b2d3226c77` |
-| EMBED 06/07 | [#7](https://github.com/bryevdv/bokeh/pull/7) | `codex/embed-05-sphinx` | `885d319d5cfb19644538b559c94b7f1047475d14` |
-| EMBED 07/07 | [#10](https://github.com/bryevdv/bokeh/pull/10) | `codex/embed-06-jupyter` | `159f97de9eb8bdd24c363c50095bdb6565c4a002` |
-
-The [shared architecture and verification gist](https://gist.github.com/bryevdv/1da477902b19eb6e08e65725e47d80b1)
-matches the four durable EMBED 00 documents byte-for-byte. The
-[shared user-migration gist](https://gist.github.com/bryevdv/7139e2f1ad7b099737f46aab542aefc0)
-contains exactly `embed-01-model-factories.md` through
-`embed-07-global-index.md`; no stale EMBED 08 cleanup file remains. Closed PR #9
-is retained only as the historical record of GitHub closing the old PR when its
-head branch was renamed.
+The reusable coordination worktree `/Users/bryan/work/trees/bokeh-embed` is
+detached after each branch is returned to its task worktree and owns no stack
+branch at handoff.
 
 ## Dedicated environment
 
@@ -113,8 +120,8 @@ The environment came from `conda/environment-test-3.13.yml` and contains Python 
 
 | Check | Result |
 |---|---|
-| Every adjacent branch is an ancestor of the next | passed after the 2026-08-20 policy handoff and sequential restack |
-| `git diff --check` for every branch range | passed after the 2026-08-20 policy handoff and sequential restack |
+| Every adjacent branch is an ancestor of the next | passed after the 2026-08-27 `branch-4.0` restack |
+| `git diff --check` for every branch range | passed after the 2026-08-27 `branch-4.0` restack |
 | No accidental wheel/build output committed | passed: no wheel, egg-info, distribution, or generated `frontend/build` tree; packaged Jupyter labextension static files belong to the preserved source POC |
 | Source branches retained | passed |
 | Old tasks retained until audit complete | required; no deletion authorized |
@@ -124,14 +131,62 @@ The environment came from `conda/environment-test-3.13.yml` and contains Python 
 | Branch | Required validation | Result |
 |---|---|---|
 | 00 | Markdown/context audit, source-tip verification, environment-policy check | passed; task-local import path and the four durable Markdown files verified |
-| 01 | BokehJS lifecycle-aware construction, rollback, protected constructors, call-site migration, build/lint/focused units | passed: library build and lint plus 98 focused construction/deserialization/lifecycle tests; final three-commit prerequisite is clean |
-| 02 | lifecycle core tests; React/Vue/Angular/Web Component fixtures; docs/type/package checks | passed: core mount units 19/19, all focused lint targets, and the full framework package/runtime suite including the dedicated packed Angular lifecycle contract; final ancestry, diff, and history checks passed |
+| 01 | BokehJS lifecycle-aware construction, rollback, protected constructors, call-site migration, build/lint/focused units | passed: library build and lint plus 98 focused construction/deserialization/lifecycle tests; the synced upstream test additions use `.create()` consistently |
+| 02 | lifecycle core tests; React/Vue/Angular/Web Component fixtures; docs/type/package checks | passed: core mount units 19/19, all focused lint targets, and the full framework package/runtime suite including the #15305 public examples plus a dedicated test-only packed Angular lifecycle contract; readiness now also observes document idle |
 | 03 | 02 smoke tests plus Python/BokehJS minimal-ID and cross-language round trips | completion suite passed; see the detailed EMBED 03 evidence below |
 | 04 | schema fixtures, Python compiler/renderers, BokehJS mount/loader, retained-facade and migration matrix | passed; see the detailed EMBED 04 evidence below |
 | 05 | Sphinx unit tests, incremental/parallel/full docs builds, browser tests, size/request budgets | passed; see the detailed EMBED 05 evidence below |
-| 06 | source frontend units, packaged-runtime tests, notebook Python/protocol tests, AnyWidget/marimo CI, Playwright, common mount smoke | passed; see the detailed EMBED 06 evidence and `embed-06-jupyter-measurements.md` |
-| 07 | remove global view/document registries and migrate discovery/export/docs to target-local mounts | finalized at `159f97de9eb8bdd24c363c50095bdb6565c4a002`; supplied coordination handoff, PR #10; exact ancestry independently verified by EMBED 08 |
+| 06 | source frontend units, packaged-runtime tests, notebook Python/protocol tests, AnyWidget/marimo CI, Playwright, common mount smoke | passed; see the detailed EMBED 06 evidence below |
+| 07 | remove global view/document registries and migrate discovery/export/docs to target-local mounts | reviewed at `ccdb06b46463a3603e0e66abcb4313cab76ed6b5`; framework tests use mount-local `view_lookup`; exact ancestry verified by EMBED 08 |
 | 08 | Panel impact inventory, Bokeh 4.0 workflow mapping, applicable diff, focused and browser downstream validation | complete against Panel `be0b5e2b0955a38a8871aa3fc1703b57c76c1e81`; applicable 45-file patch, 137 focused passes/77 optional skips, extension/TypeScript/lint/build checks, and static/server/autoload browser lifecycle probes |
+
+### 2026-08-27 `branch-4.0` sync validation
+
+The fork base advanced by fast-forward from
+`e40959e7da00157ff732a82e0bd428889c18e471` to
+`ae1c4bc298c16f0c375fc0ea88392351200b55f7`. EMBED 00–08 were replayed in
+order, with every source branch retained and a safety ref at
+`backup/embed-stack-pre-branch4-sync-20260827`. Conflicts were resolved at the
+owning layer: EMBED 01 adapted new upstream tests to model factories; EMBED 02
+aligned mount readiness with document idle; EMBED 04 adopted current ASGI and
+Tornado lifecycle signatures and kept decoder-owned dynamic-model payloads
+opaque to the artifact reference pre-scan; EMBED 06 adopted protocol message
+factories; and EMBED 07 moved framework discovery to the mount-local view
+lookup.
+
+Validation used only the `bokeh-embed` environment and the task checkout's
+source; no editable install was made:
+
+| Validation | Result |
+|---|---|
+| Clean BokehJS build | passed: library, compiler, examples, and framework packages |
+| BokehJS lint | passed: library, unit tests, and framework tests |
+| Full BokehJS unit suite | 2,383 passed, 5 skipped, 0 failed; Chrome 152 ran despite the runner's Chrome 141 support warning |
+| Full framework matrix | passed: React, Vue, Svelte, Web Component, Angular, Vite, Rspack, Webpack, Node SSR, lifecycle, type, and bundle-budget checks |
+| Focused cross-language Python suite | 123 passed; import resolved to this checkout's `src/bokeh/__init__.py` |
+| Python import sorting | passed after the EMBED 04 resource imports were normalized in their owning commit |
+| Stack ancestry and whitespace | every adjacent ancestor check and the full-stack `git diff --check` passed |
+
+### 2026-08-22 goal review and ownership pass
+
+The sequential review added public documentation/docstrings, task-aligned
+negative tests, and core-review examples without broadening task ownership:
+
+| Branch | New focused evidence | Review result |
+|---|---|---|
+| 00 | Markdown/diff checks | disjoint task goals and ownership moves recorded |
+| 01 | BokehJS library build; 52 focused factory/view/serialization browser tests | construction phases, reverse rollback, and earliest view failure documented/tested |
+| 02 | framework build; framework ESLint; 25 plotting/mount browser tests | mount ownership, readiness, disposal, and adapter contracts documented |
+| 03 | 7 Python minimal-ID tests; 5 cross-language browser tests | shared mapping references and non-expanding extra-ID boundary added |
+| 04 | 18 Python artifact tests; 20 artifact-runtime browser tests | resource union/fingerprint code moved here; compiler/renderers/policies documented with a multi-renderer tour |
+| 05 | 21 Sphinx unit tests | quick/non-HTML fallback and incremental no-embed cleanup strengthened; runnable two-file fixture documented |
+| 06 | 3 Python notebook compiler tests; 4 BokehJS patch tests; 16 frontend Vitest tests | failed patches cannot advance revision; comm/reconnect/release boundary and reviewer walkthrough documented |
+| 07 | 75 focused BokehJS browser tests | removed exports and two-mount `CustomJS` isolation tested; external two-mount discovery migration documented |
+| 08 | Markdown/diff checks plus preserved downstream matrix above | reviewer map and current reviewed branch/test ledger added; Panel patch itself unchanged |
+
+The invalid EMBED 06 Python command started from `bokehjs/` and resolved the
+installed wheel; it is excluded from evidence. Its immediate rerun from the
+repository root resolved `src/bokeh/__init__.py` and passed.
 
 The earlier EMBED 03 `dev313` run that failed five tests imported an editable primary checkout. It is classified as wrong-source contamination, not a branch failure. The clean 129/129 result above is the valid branch evidence.
 
@@ -169,8 +224,8 @@ Recorded completion validation in the dedicated `bokeh-embed` environment:
 | Ruff and selected Pyright | passed; 0 Pyright errors/warnings |
 
 The complete measurements, validation commands, migration routes, and
-downstream propagation decisions are in
-`outputs/embed-06-jupyter-measurements.md`.
+downstream propagation decisions are recorded in this section and the Jupyter
+sections of `outputs/embed-stack-context.md`.
 
 ## EMBED 05 Sphinx consumer decisions and evidence
 
@@ -217,8 +272,8 @@ The generated full site contained 490 artifact pages, 490 payloads totaling
 55,937,313 bytes, one 1,961-byte bootstrap, and six exact shared BokehJS
 bundles. The 42-root page used six Bokeh-owned requests; the 35-root plot page
 used four. Exact page bytes, request sets, full-build tree sizes, hashes, and
-the 9,337,415-byte data-payload high-water mark are recorded in
-`outputs/embed-05-sphinx-measurements.md`.
+the 9,337,415-byte data-payload high-water mark are preserved here as the
+durable Sphinx measurement record.
 
 Cross-layer decisions for EMBED 00/06/07 to propagate:
 
@@ -234,7 +289,7 @@ Cross-layer decisions for EMBED 00/06/07 to propagate:
 - static Python callbacks and server applications require explicit host routes,
   not a silent second standalone pipeline.
 
-## EMBED 04 artifact/runtime decisions and evidence
+## EMBED 04 embedding compiler and delivery decisions
 
 The branch implements one immutable `bokeh.embed/v1` envelope in Python and
 BokehJS, graph-minimal standalone compilation, structural logical roots,
@@ -272,10 +327,9 @@ reports Chrome 141 as officially supported. The managed sandbox blocks local
 test ports, so browser validation ran with the approved local-socket sandbox
 override; no network publication or GitHub operation occurred.
 
-Payload/build measurements and hashes are recorded in
-`outputs/embed-04-artifact-measurements.md`. The full schema, lifecycle,
-resource policy, migration matrix, and downstream propagation decisions are in
-`outputs/embed-04-artifact-runtime.md`.
+Payload/build measurements, schema and lifecycle decisions, the resource
+policy, and the migration matrix are recorded in this section and the EMBED 04
+implementation record in `outputs/embedding-architecture-proposal.md`.
 
 ## EMBED 03 minimal-ID decisions and evidence
 
@@ -315,7 +369,12 @@ Validation through the dedicated `bokeh-embed` environment:
 
 Headless BokehJS validation used locally available Chrome 151 while the runner reports Chrome 141 as officially supported. The warning produced no test, browser, or protocol failures.
 
-Payload sizes, ID counts, repeated determinism, and equivalent-rebuild behavior are recorded in `outputs/embed-03-minimal-id-measurements.md`. The line-plot measurement confirms that graph-required IDs may remain allocation-dependent across equivalent rebuilds; EMBED 04 must derive artifact/build fingerprints from normalized source and options rather than raw retained model IDs.
+Payload sizes, ID counts, repeated determinism, and equivalent-rebuild behavior
+were recorded during the branch validation summarized above. The line-plot
+measurement confirms that graph-required IDs may remain allocation-dependent
+across equivalent rebuilds; EMBED 04 therefore derives artifact/build
+fingerprints from normalized source and options rather than raw retained model
+IDs.
 
 Cross-layer decisions for EMBED 00/04 to propagate:
 
@@ -345,7 +404,7 @@ Cross-layer decisions for EMBED 00/04 to propagate:
   caller documents, selective detach/reattach, target replacement, dynamic root
   add/remove failures, abort/supersession, failure rollback, global-index
   cleanup, and repeated disposal.
-- The framework fixture uses the shared base controller for error, callback
+- The test-only framework fixtures use the shared base controller for error, callback
   rollback, exact-once disposal, and selective lifecycle assertions. React,
   Vue, Svelte, and Web Component production and development fixtures run the
   complete shared contract. The packed Angular fixture independently exercises
@@ -355,10 +414,13 @@ Cross-layer decisions for EMBED 00/04 to propagate:
   artifacts and stay within their bundle budgets.
 
 The original ten source commits remain fully accounted for. Their factory and
-rollback hunks were extracted into EMBED 01, and EMBED 02 was rewritten into
-12 reviewable mount/framework commits above that prerequisite. The combined
-tree is exact against the validated pre-split replay, so the history change does
-not change framework behavior.
+rollback hunks were extracted into EMBED 01, and EMBED 02 was first rewritten
+into 12 concern-focused mount/framework commits above that prerequisite. That
+12-commit tree is exact against the validated pre-split replay. Six subsequent
+review commits bring the branch to 18 commits total; the latest restores PR
+#15305's user-facing Angular example and example index byte-for-byte while
+moving only lifecycle instrumentation to a test-only packed application. The
+public example is simpler without reducing browser coverage.
 
 ### Lifecycle-aware factory extraction boundary
 
@@ -420,14 +482,15 @@ produce browser exceptions, network failures, or test failures.
 ## Known unresolved review blockers
 
 All eleven recorded Jupyter review blockers are resolved with implementation
-and evidence in `outputs/embed-stack-context.md` and
-`outputs/embed-06-jupyter-measurements.md`. Hosted Colab browser automation is
+and evidence in `outputs/embed-stack-context.md` and the EMBED 06 evidence
+above. Hosted Colab browser automation is
 the only environment-limited check; the exact production static and connected
 adapter contracts are unit-tested and the documentation labels the hosted
 smoke test as pending rather than claiming it passed.
 
-EMBED 08 was rerun against the completed EMBED 01–07 Python and BokehJS APIs,
-with exact parent `159f97de9eb8bdd24c363c50095bdb6565c4a002`. The earlier
+EMBED 08 was rerun against the completed EMBED 01–07 Python and BokehJS APIs.
+Its reviewed exact parent is
+`ccdb06b46463a3603e0e66abcb4313cab76ed6b5`. The earlier
 Panel assessment remains provenance only. Final evidence includes removal of
 `Bokeh.index`, `Bokeh.documents`, and public global view-manager discovery.
 
@@ -482,15 +545,13 @@ the Panel page separately owned the same bundle.
 - worktree: `/Users/bryan/work/trees/e94b/bokeh-embed`;
 - branch: `codex/embed-08-panel`;
 - exact parent: `codex/embed-07-view-index-cleanup` at
-  `159f97de9eb8bdd24c363c50095bdb6565c4a002`;
+  `ccdb06b46463a3603e0e66abcb4313cab76ed6b5`;
 - parent is based on EMBED 06 at
-  `885d319d5cfb19644538b559c94b7f1047475d14`;
+  `9117e083f53cea7ba488c671ffc9cda1794f5709`;
 - pre-restack Panel series retained as
   `backup/embed-08-panel-pre-view-index-7378a1fd31`;
-- final tip: `ba2f6dbb82b0b44c520e5f73dab1ab06be6fd9af`;
-- reviewable commits: `4d08dfa981` (contract/assessment), `db543187d2`
-  (applicable Panel patch), and `ba2f6dbb82` (validation ledger);
-- pre-hygiene tip preserved as `backup/embed-08-panel-pre-hygiene-d84c169e29`.
+- final tip and coherent assessment/patch/validation commits are reported at
+  handoff because the verification commit cannot contain its own SHA.
 
 ### Patch applicability
 

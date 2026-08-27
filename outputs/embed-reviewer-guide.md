@@ -1,6 +1,7 @@
 # Embedding stack reviewer guide
 
-Status: local 2026-08-22 review of EMBED 00–08 after sequential restacking.
+Status: 2026-09-01 review of EMBED 00–08 after sequential restacking onto the
+fork's synchronized `branch-4.0` and placing Jupyter before Sphinx.
 This is the shortest path for a core reviewer who wants to understand why the
 stack is split this way, what each branch alone promises, and which examples
 demonstrate the result.
@@ -14,8 +15,8 @@ demonstrate the result.
 | EMBED 02 | Define `BokehMount` and thin framework adapters over its target, readiness, ownership, attachment, error, and disposal lifecycle. | Static identity policy or artifact/resource compilation. |
 | EMBED 03 | Make static serialization graph-minimal while preserving canonical IDs at live protocol boundaries. | Browser mounting, resource delivery, or host behavior. |
 | EMBED 04 | Compile and deliver versioned embedding values across Python/BokehJS: renderers, requirements/policy, loading, server source, facades, and migration errors. | Sphinx, notebook, or downstream-host policy. |
-| EMBED 05 | Make Sphinx a deterministic per-page consumer of the shared compiler, resources, and mount lifecycle. | A second artifact schema, loader, or view registry. |
-| EMBED 06 | Adapt Jupyter hosts to shared artifacts/mounts while owning only MIME, transport, reconnect/release, and export behavior. | Core global-discovery cleanup or another render lifecycle. |
+| EMBED 05 | Adapt Jupyter hosts to shared artifacts/mounts while owning only MIME, transport, reconnect/release, and export behavior. | Core global-discovery cleanup or another render lifecycle. |
+| EMBED 06 | Make Sphinx a deterministic per-page consumer of the shared compiler, resources, and mount lifecycle. | A second artifact schema, loader, or view registry. |
 | EMBED 07 | Remove `Bokeh.index`, `Bokeh.documents`, and public global view discovery after all consumers have target-local routes. | New compiler, framework, or notebook features. |
 | EMBED 08 | Assess Panel last and propose a Panel-owned Bokeh 4 migration patch against the completed contract. | Restoring Bokeh 3 envelopes or implementing Panel concerns in Bokeh core. |
 
@@ -48,8 +49,10 @@ error. Start with `outputs/embedding-architecture-proposal.md`, then use
 The three implementation commits isolate `.create()` before any mount work.
 TSDoc now names construct, deferred reference resolution, initialize, and
 finalize phases. Tests prove reverse-order deserialization rollback and cleanup
-when a view fails at the earliest initialize phase. The extension-author docs
-use a real `NewActionTool.create()` example and explicitly destroy it.
+when a view fails at the earliest initialize phase. New tests inherited from
+the synchronized base were migrated to `.create()` as part of the same
+construction boundary. The extension-author docs use a real
+`NewActionTool.create()` example and explicitly destroy it.
 
 Best review paths: `bokehjs/src/lib/core/has_props.ts`,
 `bokehjs/src/lib/core/serialization/deserializer.ts`, and the focused
@@ -64,6 +67,11 @@ and Web Component adapters state that they delegate to this common handle.
 The public framework examples stay focused on ordinary application code. The
 packed-package test matrix overlays private lifecycle controls where deeper
 mount, disposal, and rollback assertions are needed.
+
+The synchronized-base review also made standalone mount readiness notify the
+document's idle lifecycle after the view is ready. A detached `UIElement` unit
+still exercises view construction directly, while the public mount contract
+continues to require a connected target.
 
 Best demo: `bokehjs/examples/frameworks`. Best contract test:
 `bokehjs/test/unit/api/io.ts`. Best adapter lifecycle fixture:
@@ -88,13 +96,15 @@ logic is owned here, not by Sphinx. Python docstrings and BokehJS TSDoc cover
 the artifact, spec, renderers, policy resolver, asset records, loader, and
 structured errors. The user guide explains requirements versus delivery policy
 and includes a plot/widget/table tour through page, fragment, JSON, external,
-and MIME renderers.
+and MIME renderers. The synchronized-base adaptation also preserves current
+ASGI/Tornado server lifecycle signatures and treats decoder-owned payloads,
+including dynamic model definitions, as opaque during forward-reference scans.
 
 Best review paths: `src/bokeh/embed/artifact.py`,
 `src/bokeh/embed/compiler.py`, `src/bokeh/embed/renderers.py`,
 `src/bokeh/embed/resources.py`, and `bokehjs/src/lib/embed`.
 
-### EMBED 05 — Sphinx consumer
+### EMBED 06 — Sphinx consumer
 
 The directive and `setup()` now document their page-scoped ownership. Comments
 mark `bokeh.embed-page/v1` as a docs-private envelope around public
@@ -106,7 +116,7 @@ a two-file fixture and expected generated tree for a quick core review.
 Best demo: the “Core-review fixture” in
 `docs/bokeh/source/docs/reference/sphinxext.rst`.
 
-### EMBED 06 — Jupyter host adapters
+### EMBED 05 — Jupyter host adapters
 
 Notebook patch TSDoc now specifies consecutive revisions, duplicate replay,
 buffer correspondence, snapshot recovery, and the transactional rule that a
@@ -125,7 +135,8 @@ mount discovery remains. A new test mounts two independent documents and proves
 that `CustomJS` receives distinct document-local view lookups. The advanced
 BokehJS guide has an explicit migration table and a two-mount example in which
 external code runs before either bootstrap, selects stable host targets, and
-awaits `Bokeh.when_mounted(target)`.
+awaits `Bokeh.when_mounted(target)`. Framework integration tests now use the
+same mount-local `view_lookup` instead of reaching for the removed registry.
 
 Best review paths: `bokehjs/src/lib/api/io.ts`,
 `bokehjs/src/lib/core/view_manager.ts`, and “Discovering declarative mounts

@@ -1,11 +1,10 @@
-/Users/bryan/.zlogin:9: nice(5) failed: operation not permitted
 # Initiative summary: coherent embedding across Python, BokehJS, docs, frameworks, and notebooks
 
 ## Proposed initiative
 
 Replace Bokeh's accumulated embedding paths with one versioned artifact contract, one browser mount/lifecycle API, and one resource resolution model. Use the Bokeh 4.0 breaking-release boundary to retain only useful thin conveniences, remove architecture-shaping legacy machinery, and make Sphinx, JavaScript framework adapters, and Jupyter first-class consumers of the same layers.
 
-The detailed design and full legacy API inventory are in `outputs/embedding-architecture-proposal.md`. The implementation stack and preserved source-task context are in `outputs/embed-stack-context.md`.
+The detailed design and full legacy API inventory are in `outputs/embedding-architecture-proposal.md`. The implementation stack and preserved source-task context are in `outputs/embed-stack-context.md`. Core reviewers can start with the disjoint goal, evidence, and demo map in `outputs/embed-reviewer-guide.md`.
 
 ## Problem
 
@@ -53,8 +52,9 @@ Jupyter follows the common artifact/runtime work. Static display, live handles, 
 
 Panel is the final downstream validation layer. The completed audit pinned Panel
 at `be0b5e2b0955a38a8871aa3fc1703b57c76c1e81` and produced an applicable
-45-file migration diff against `codex/embed-07-view-index-cleanup` at
-`159f97de9eb8bdd24c363c50095bdb6565c4a002`. Static HTML, templates,
+45-file migration diff against the runtime represented by
+`codex/embed-07-view-index-cleanup`, now at
+`20ea756f3f13d6c8ac6c8c6d5949b465eaefc065`. Static HTML, templates,
 protocol-full state replay,
 notebook initial display, Tornado server pages/autoload compatibility, BokehJS
 4 extension APIs, readiness/errors, and mount disposal are mapped to the common
@@ -77,19 +77,22 @@ EMBED 01 Lifecycle-aware BokehJS model factories and rollback
 EMBED 02  BokehJS mount lifecycle and framework adapters
 EMBED 03  Minimal IDs integrated with lifecycle-safe construction
 EMBED 04  Artifact compiler, renderers, resource resolver/loader, retained facades and migration errors
-EMBED 05  Sphinx bokeh-embed page aggregation
-EMBED 06  Jupyter and notebook host adapters
+EMBED 05  Jupyter and notebook host adapters
+EMBED 06  Sphinx bokeh-embed page aggregation
 EMBED 07  Global view-index and document-registry cleanup
 EMBED 08  Panel downstream impact assessment and patch proposal
 ```
 
-The branches are intentionally stackable in that order. Lifecycle-aware model construction is a factored prerequisite for framework mounting, which precedes minimal-ID conflict resolution; all three precede the artifact/runtime that consumes them. Sphinx is the first production static consumer. Jupyter validates the most demanding live-host cases. Panel runs last as a downstream compatibility audit against the completed design.
+The branches are intentionally stackable in that order. Lifecycle-aware model construction is a factored prerequisite for framework mounting, which precedes minimal-ID conflict resolution; all three precede the artifact/runtime that consumes them. Jupyter establishes the final general output and live-host APIs before Sphinx layers documentation capture and page aggregation onto those APIs. Panel runs last as a downstream compatibility audit against the completed design.
 
 ## Testing expectations
 
 Treat cross-language fixtures and host lifecycle tests as part of the design, not cleanup. Required coverage includes schema compatibility and errors, anonymous/shared/cyclic graphs, keyed multi-root and shared-document mounting, sequential/concurrent additive resource loading, disposal and rollback leak tests, every retained facade and 4.0 migration diagnostic, page-level docs resource/request budgets, notebook output replacement and virtualization, bounded patch buffers, comm failures/timeouts, renderer rerender/disposal, trust/removal, safe and concurrent exports, and explicitly executed AnyWidget/marimo CI jobs.
 
-All nine tasks run project commands through `/Users/bryan/anaconda3/bin/conda run -n bokeh-embed ...`. Python tests use `python -m pytest -o pythonpath=src ...` after verifying the import path; the shared environment must not be repointed with an editable install.
+All nine recovered tasks use the repository's committed `pixi.toml` and
+`pixi.lock`. A fresh worktree runs `pixi run --locked setup`; subsequent project
+commands use `pixi run --locked ...` after verifying that Python resolves to the
+task checkout.
 
 ## Definition of done
 

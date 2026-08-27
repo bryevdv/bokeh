@@ -1,4 +1,3 @@
-/Users/bryan/.zlogin:9: nice(5) failed: operation not permitted
 # A coherent embedding architecture for Bokeh
 
 Status: proposal.
@@ -515,11 +514,11 @@ with capture_output() as captured:
 artifacts = [embed(obj) for obj in captured.shown]
 ```
 
-The real `show()`, `save()`, `output_file()`, and `output_notebook()` functions consult the sink. Existing example source remains unchanged, including direct imports, but no module globals are patched. The capture records multiple `show()` calls in order. A narrow compatibility path can handle examples that explicitly instantiate `Document`, but replacing the exported class globally should not be the default.
+The real `show()`, `save()`, and `output_file()` functions consult the sink. Existing example source remains unchanged, including direct imports, but no module globals are patched. The capture records multiple `show()` calls in order. A narrow compatibility path can handle examples that explicitly instantiate `Document`, but replacing the exported class globally should not be the default.
 
 This output-capture facility is also useful for gallery builders and downstream documentation systems.
 
-### EMBED 05 implementation evidence
+### EMBED 06 implementation evidence
 
 The completed Sphinx consumer follows this design without introducing another
 embedding stack. Directives compile `EmbedArtifact` values through `embed()`;
@@ -536,7 +535,7 @@ The highest-density generated page mounted all 42 roots with four exact bundles,
 one payload, one bootstrap, and no browser console errors. Core/plot, tables,
 WebGL, MathJax, and compiled custom-extension pages also passed full-output
 browser smoke tests. Detailed bytes, requests, hashes, and focused validation
-totals are preserved in the EMBED 05 section of
+totals are preserved in the EMBED 06 section of
 `outputs/embed-stack-verification.md`.
 
 ## Proposed public API and 4.0 migration mapping
@@ -866,7 +865,7 @@ The final deliverable is an evidence-backed impact assessment plus an applicable
 45-file Panel diff at revision
 `be0b5e2b0955a38a8871aa3fc1703b57c76c1e81`. The diff is exercised against the
 completed runtime represented by `codex/embed-07-view-index-cleanup`, now at
-`21931d5ac3fad225abb68f3b3e7564bd42404e10`. It removes Panel's global view
+`20ea756f3f13d6c8ac6c8c6d5949b465eaefc065`. It removes Panel's global view
 fallbacks and keeps unsupported WASM transport paths behind explicit migration
 errors instead of fabricating compatibility.
 

@@ -3,9 +3,15 @@
 Target Panel revision:
 `be0b5e2b0955a38a8871aa3fc1703b57c76c1e81` (`main`, 2026-08-20).
 
-Bokeh architecture parent:
+Bokeh architecture source-validation parent:
 `codex/embed-07-view-index-cleanup` at
-`21931d5ac3fad225abb68f3b3e7564bd42404e10`.
+`ccdb06b46463a3603e0e66abcb4313cab76ed6b5`.
+
+The recovered EMBED 08 branch is now based on EMBED 07 at
+`20ea756f3f13d6c8ac6c8c6d5949b465eaefc065`. Jupyter is EMBED 05 and Sphinx
+is EMBED 06; reordering those layers left their combined tree unchanged. The
+patch remains byte-identical and passes `git apply --check` at the pinned Panel
+revision.
 
 The downstream browser and build validation ran before the final review-only
 documentation, TSDoc, and test commit on that branch. No Bokeh runtime behavior

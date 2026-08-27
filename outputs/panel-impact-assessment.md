@@ -1,9 +1,17 @@
 # Panel downstream impact of the final Bokeh 4 embedding stack
 
 Status: final local EMBED 08 assessment. It evaluates the complete stack through
-`codex/embed-07-view-index-cleanup`, now at
-`21931d5ac3fad225abb68f3b3e7564bd42404e10`, including removal of public global
+the source-stack `codex/embed-07-view-index-cleanup` tip
+`ccdb06b46463a3603e0e66abcb4313cab76ed6b5`, including removal of public global
 view/document discovery. It is not part of a public Bokeh pull request.
+
+Recovery note (2026-09-01): this documentation branch is now restacked on
+EMBED 07 at `20ea756f3f13d6c8ac6c8c6d5949b465eaefc065`. Jupyter is EMBED 05 and
+Sphinx is EMBED 06; their preserved remote branch names retain the older
+numbers. Reordering those layers left their combined tree unchanged. The patch
+checksum and a clean `git apply --check` at the pinned Panel revision were
+reverified; the full downstream runtime matrix below was not rerun during this
+history-only recovery.
 
 The final EMBED 07 review commit after the downstream browser/build validation
 contains documentation, TSDoc, and tests only; the runtime exercised by this

@@ -2,7 +2,8 @@
 
 Status: active review. This ledger defines disjoint task goals, evaluates each
 branch only against its own goal, and records documentation, test, and demo
-work before any stack rewrite or GitHub update.
+work. The 2026-09-01 order correction numbers Jupyter as EMBED 05 and Sphinx as
+EMBED 06; the detailed review sections retain their original narrative order.
 
 ## Disjoint task goals
 
@@ -13,8 +14,8 @@ work before any stack rewrite or GitHub update.
 | EMBED 02 | Mount already-decoded standalone or server sources into keyed DOM targets with explicit readiness, replacement, lookup, and disposal, and expose that lifecycle through thin framework adapters. | Artifact serialization/decoding, resource resolution/loading, or host-specific aggregation. |
 | EMBED 03 | Define and implement graph-minimal static serialization, including logical root addressing and cross-language graph fixtures, without changing ID-full live protocols. | Artifact envelopes/renderers, DOM mounting, resources, or host integration. |
 | EMBED 04 | Compile embedding inputs into versioned artifacts, render/decode them, resolve and load declared resources, and adapt retained Python embedding facades to the shared mount runtime. | Sphinx page aggregation, notebook synchronization, framework component lifecycle, or Panel-specific compatibility. |
-| EMBED 05 | Make Sphinx a deterministic per-page consumer of the shared artifact/resource/mount contracts through the canonical `bokeh-embed` directive. | Generic artifact/runtime features or notebook/downstream-host behavior. |
-| EMBED 06 | Implement notebook-host adapters, bounded revisioned synchronization, output ownership, and correlated export on top of shared artifacts and mounts. | General framework adapters, global discovery compatibility, or Panel migration. |
+| EMBED 05 | Implement notebook-host adapters, bounded revisioned synchronization, output ownership, and correlated export on top of shared artifacts and mounts. | General framework adapters, global discovery compatibility, or Panel migration. |
+| EMBED 06 | Make Sphinx a deterministic per-page consumer of the shared artifact/resource/mount contracts through the canonical `bokeh-embed` directive. | Generic artifact/runtime features or notebook/downstream-host behavior. |
 | EMBED 07 | Remove global BokehJS view/document discovery and migrate remaining Bokeh-owned lookup/export paths to target-local mount handles. | New mount lifecycle behavior, artifact/resource policy, or third-party host migration. |
 | EMBED 08 | Evaluate and demonstrate Panel's migration against the completed Bokeh 4 stack, separating Panel-owned changes from reusable Bokeh gaps. | Redefining Bokeh's core contract or adding Panel-only compatibility shims to Bokeh. |
 
@@ -197,7 +198,7 @@ cross-language fingerprint, all renderers, resource modes/conflicts, additive
 loading, repeated mounts, early disposal, server bootstrap, facades, and
 removed APIs. The implementation strongly fits the goal.
 
-Boundary finding: commit `f43528b781` currently lives in EMBED 05 but adds
+Boundary finding: commit `f43528b781` currently lives in the Sphinx layer, now EMBED 06, but adds
 `ResourceRequirements.union()`, integral-number fingerprint parity, and generic
 artifact tests. Those are reusable artifact-contract behavior and should move
 to EMBED 04. The Sphinx branch should merely consume the union.
@@ -230,7 +231,7 @@ and table, compiles once, and writes page, fragment, JSON, and external forms.
 Comments should explain what each renderer is for and how the resource policy
 changes without recompiling the artifact.
 
-## EMBED 05 review
+## EMBED 06 review
 
 Exclusive goal: deterministic Sphinx page aggregation as a consumer of the
 shared artifact/resource/mount contracts.
@@ -274,7 +275,7 @@ Add a tiny self-contained Sphinx fixture under examples or developer docs that
 core members can build quickly, plus one screenshot and a generated-file tree
 showing one page payload/bootstrap/resource union.
 
-## EMBED 06 review
+## EMBED 05 review
 
 Exclusive goal: notebook-host adaptation, bounded revisioned synchronization,
 output ownership, and correlated export over shared artifacts and mounts.

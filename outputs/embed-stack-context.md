@@ -1,4 +1,3 @@
-/Users/bryan/.zlogin:9: nice(5) failed: operation not permitted
 # EMBED overhaul: stack context and handoff contract
 
 This file is the durable handoff for the replacement Codex tasks in the **Bokeh embed overhaul** project. It records the source work that must be preserved, the architectural contract shared by all branches, the intended stack, and branch-specific acceptance criteria.
@@ -7,7 +6,9 @@ The full embedding API inventory and design proposal is in `outputs/embedding-ar
 
 ## Source work to preserve
 
-The replacement stack starts at `branch-4.0` (`e40959e7da00157ff732a82e0bd428889c18e471`). The old tasks remain the provenance record until Bryan removes them.
+The recovered replacement stack starts at the fork's synchronized `branch-4.0`
+(`76cdca4f973e1bc1e0e18c3491afb9e8524d8e55`, fetched 2026-09-01). The old
+tasks remain the provenance record until Bryan removes them.
 
 | Area | Old Codex task | Source branch and tip | Source commits |
 |---|---|---|---|
@@ -55,13 +56,15 @@ a6485cdf52 Fix increasing points in marimo demo
 
 ## Dedicated project environment
 
-All eight replacement tasks use the dedicated `bokeh-embed` Conda environment for every project command, including Git, Python, Node.js, tests, and builds:
+All nine recovered tasks use the repository's committed `pixi.toml` and
+`pixi.lock`. A fresh worktree is initialized with:
 
 ```text
-/Users/bryan/anaconda3/bin/conda run -n bokeh-embed ...
+pixi run --locked setup
 ```
 
-This project rule overrides the workspace-level `dev313` default. The environment was created from `conda/environment-test-3.13.yml` and the transfer baseline is:
+Subsequent project commands run non-interactively as `pixi run --locked ...`.
+The recovered default environment resolves to:
 
 | Tool | Version |
 |---|---|
@@ -70,10 +73,12 @@ This project rule overrides the workspace-level `dev313` default. The environmen
 | npm | 11.17.0 |
 | pytest | 9.1.1 |
 
-The installed local Bokeh 4.0 proof-of-concept wheel is distribution metadata and a static baseline only. No task may repoint this shared environment with `pip install -e` or another editable install. Before a consequential Python run, verify that `bokeh` resolves to the intended task checkout. From a task repository root, invoke pytest as:
+`setup` installs the task worktree into that worktree's own Pixi environment.
+Before a consequential Python run, verify that `bokeh` resolves to the intended
+task checkout. From a task repository root, invoke pytest as:
 
 ```text
-/Users/bryan/anaconda3/bin/conda run -n bokeh-embed python -m pytest -o pythonpath=src ...
+pixi run --locked python -m pytest -o pythonpath=src ...
 ```
 
 The EMBED 03 minimal-ID focused suite passes 129/129 with this command and source precedence. An earlier `dev313` run failed five tests because it imported the editable primary checkout; that result is recorded as wrong-source contamination, not a branch failure.
@@ -167,7 +172,7 @@ Target mapping:
 
 Notebook-specific code remains responsible for MIME registration, comm/AnyWidget transport, host capability detection, server-app proxying, export UI, and diagnostics. It should not own a parallel `docs_json`/`RenderItem`/`embed_items_notebook()` rendering lifecycle. The frontend should converge on `await mount(artifact, target, options)` and dispose the returned handle.
 
-The newest review of `poc/jupyter-integration-4.0` found it promising but not merge-ready. Every item below is required context for the replacement Jupyter task:
+The newest review of `poc/jupyter-integration-4.0` found it promising but not merge-ready. Every item below is required context for the replacement Jupyter task, now EMBED 05:
 
 1. Frontend runtime tests currently depend on generated `frontend/build/runtime.js`, which is excluded or removed in clean CI. Run frontend tests directly in the frontend package before packaging, and verify the packaged runtime separately.
 2. Ignored or re-executed `show()` handles can leak document graphs. Python registries retain handles/source callbacks and the frontend `documentData` map retains serialized documents. Define output ownership and distinguish actual deletion/replacement from renderer virtualization.
@@ -183,7 +188,7 @@ The newest review of `poc/jupyter-integration-4.0` found it promising but not me
 
 The review validation baseline was 151 Python tests passing and `npm run check:protocol` passing with no review edits. This is a baseline, not proof that the blockers above are fixed.
 
-EMBED 06 resolution (2026-08-20):
+EMBED 05 resolution (2026-08-20):
 
 | Review item | Resolution and evidence |
 |---|---|
@@ -214,8 +219,8 @@ branch-4.0
         └── codex/embed-02-mount-frameworks
             └── codex/embed-03-minimal-ids
                 └── codex/embed-04-artifact-runtime
-                    └── codex/embed-05-sphinx
-                        └── codex/embed-06-jupyter
+                    └── codex/embed-06-jupyter  (EMBED 05; preserved remote branch name)
+                        └── codex/embed-05-sphinx  (EMBED 06; preserved remote branch name)
                             └── codex/embed-07-view-index-cleanup
                                 └── codex/embed-08-panel
 ```
@@ -233,8 +238,8 @@ would be introduced.
 | establish DOM ownership | one keyed mount returns an immediate lifecycle handle | EMBED 02 |
 | serialize static state | graph-minimal IDs and logical root keys replace global model-ID addressing | EMBED 03 |
 | compile and deliver | one compiler produces a versioned artifact whose requirements are resolved by host policy | EMBED 04 |
-| aggregate a documentation page | Sphinx unions artifact requirements and emits one page bootstrap | EMBED 05 |
-| adapt a notebook host | Jupyter adds bounded synchronization and output ownership without another renderer | EMBED 06 |
+| adapt a notebook host | Jupyter adds bounded synchronization and output ownership without another renderer | EMBED 05 |
+| aggregate a documentation page | Sphinx unions artifact requirements and emits one page bootstrap | EMBED 06 |
 | acquire from external JavaScript | target-local discovery replaces global view and document registries | EMBED 07 |
 | migrate downstream | Panel consumes the completed contract and reports reusable Bokeh gaps separately | EMBED 08 |
 
@@ -353,7 +358,7 @@ Detailed API, migration, and determinism evidence is recorded in the EMBED 04
 sections of `outputs/embedding-architecture-proposal.md` and
 `outputs/embed-stack-verification.md`.
 
-### EMBED 05 — Sphinx and `bokeh-embed`
+### EMBED 06 — Sphinx and `bokeh-embed`
 
 Make documentation builds a first-class static artifact consumer. Replace the
 legacy `bokeh-plot` extension/directive and its per-directive autoload programs
@@ -374,11 +379,11 @@ Acceptance:
   with source-located Bokeh 4 migration guidance; generated assets live under
   `_static/bokeh-embed` and recognized legacy assets are cleaned safely.
 
-Implemented EMBED 05 decisions that later layers must preserve:
+Implemented EMBED 06 decisions that later layers must preserve:
 
 - documentation output capture is a context-local seam in `bokeh.io`; without
-  an active capture, `show()`, `save()`, `output_file()`, and
-  `output_notebook()` retain their normal behavior. Consumers must not restore
+  an active capture, `show()`, `save()`, and `output_file()` retain their
+  normal behavior. Consumers must not restore
   global monkeypatching to capture output;
 - each directive compiles ordinary Bokeh objects through `embed()` and the
   typed renderers. The docs-private `bokeh.embed-page/v1` manifest only groups
@@ -392,7 +397,7 @@ Implemented EMBED 05 decisions that later layers must preserve:
   resolver and typed resource renderer;
 - the page bootstrap calls `Bokeh.mount()` and retains the returned
   `BokehMount`; it does not own a parallel decoder, resource registry, or view
-  lifecycle. EMBED 06 through 08 must continue to use the common mount contract;
+  lifecycle. EMBED 07 and 08 must continue to use the common mount contract;
 - source/options/schema/version/callback-policy fingerprints key the directive
   cache and payload name. External sources are Sphinx dependencies; doctree
   purge/merge and atomic cache writes make incremental and parallel builds
@@ -411,9 +416,9 @@ Implemented EMBED 05 decisions that later layers must preserve:
   the project's Node 24 ESM package scope.
 
 Full-build, incremental, browser, request, and size evidence is recorded in the
-EMBED 05 section of `outputs/embed-stack-verification.md`.
+EMBED 06 section of `outputs/embed-stack-verification.md`.
 
-### EMBED 06 — Jupyter and notebook hosts
+### EMBED 05 — Jupyter and notebook hosts
 
 Replay and preserve the Jupyter proof of concept above the common runtime, then refactor it into host adapters and address every latest-review blocker.
 
@@ -439,8 +444,8 @@ models use explicit `CustomJS.args`.
 
 Final parent for the downstream audit:
 `codex/embed-07-view-index-cleanup` at
-`21931d5ac3fad225abb68f3b3e7564bd42404e10`, based on EMBED 06 at
-`677b0f05384f0126057a79a1097daf3930ebfa20`.
+`20ea756f3f13d6c8ac6c8c6d5949b465eaefc065`, based on EMBED 06 at
+`15c0e7824f39eff22117823dd9855043895d049a`.
 
 ### EMBED 08 — Panel downstream impact and patch proposal
 
