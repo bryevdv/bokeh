@@ -406,6 +406,12 @@ export class Deserializer {
       if (isArray(child)) {
         child.forEach(visit)
       } else if (isPlainObject(child)) {
+        // Registered decoders own the representation nested under their value.
+        // Model definitions, for example, can contain defaults which resemble
+        // references to types that the definition has not registered yet.
+        if (isString(child.type) && _decoders.has(child.type)) {
+          return
+        }
         if (child.type == "object" && isString(child.id) && isString(child.name) &&
             !this.references.has(child.id)) {
           const cls = this._resolve_type(child.name)
