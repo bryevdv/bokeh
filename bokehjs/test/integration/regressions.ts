@@ -5450,8 +5450,8 @@ describe("Bug", () => {
 
   describe("in issue #14593", () => {
     it.no_image("doesn't allow a plot's context menu to work after repeated toolbar property changes", async () => {
-      const pan = new PanTool()
-      const box_select = new BoxSelectTool()
+      const pan = PanTool.create()
+      const box_select = BoxSelectTool.create()
 
       const p = fig([300, 300], {tools: [pan, box_select], toolbar_location: null})
       p.scatter([1, 2, 3], [1, 2, 3], {size: 15})
