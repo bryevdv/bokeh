@@ -38,6 +38,7 @@ export abstract class LRTBView extends GlyphView {
   }
 
   override get_anchor_point(anchor: Anchor, i: number, _spt: [number, number]): XY | null {
+    this.ensure_screen_data()
     const left = Math.min(this.sleft[i], this.sright[i])
     const right = Math.max(this.sright[i], this.sleft[i])
     const top = Math.min(this.stop[i], this.sbottom[i])     // screen coordinates !!!

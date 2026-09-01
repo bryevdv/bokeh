@@ -6,8 +6,9 @@ import type {LineGlyphProps, LineDashGlyphProps} from "./types"
 import type {GlyphView} from "../glyph"
 import type * as visuals from "core/visuals"
 import {resolve_line_dash} from "core/visuals/line"
-import type {Framebuffer2D, Texture2D} from "regl"
+import type {BoundingBox, Framebuffer2D, Texture2D} from "regl"
 import type {Arrayable} from "core/types"
+import {normalize_dash_pattern} from "./dash_cache"
 
 export type BaseLineVisuals = visuals.LineVector | visuals.LineScalar
 
@@ -30,10 +31,10 @@ export abstract class BaseLineGL extends BaseGLGlyph {
   protected _show?: Uint8Buffer  // Applies to segments not points.
 
   // visual properties
-  protected readonly _linewidth = new Float32Buffer(this.regl_wrapper)
-  protected readonly _line_color = new NormalizedUint8Buffer(this.regl_wrapper, 4)
-  protected readonly _line_cap = new Uint8Buffer(this.regl_wrapper)
-  protected readonly _line_join = new Uint8Buffer(this.regl_wrapper)
+  protected readonly _linewidth = this.own(new Float32Buffer(this.regl_wrapper))
+  protected readonly _line_color = this.own(new NormalizedUint8Buffer(this.regl_wrapper, 4))
+  protected readonly _line_cap = this.own(new Uint8Buffer(this.regl_wrapper))
+  protected readonly _line_join = this.own(new Uint8Buffer(this.regl_wrapper))
 
   protected _is_dashed = false
 
@@ -51,9 +52,19 @@ export abstract class BaseLineGL extends BaseGLGlyph {
   abstract override draw(_indices: number[], main_glyph: GlyphView, transform: Transform): void
 
   protected _draw_single(main_gl_glyph: BaseLineGL, transform: Transform, line_offset: number, point_offset: number,
-                         nsegments: number, framebuffer: Framebuffer2D | null, show: Uint8Buffer | null = null): void {
+                         nsegments: number, framebuffer: Framebuffer2D | null,
+                         show: Uint8Buffer | null = null): BoundingBox {
+    const linewidths = this._linewidth.get_array()
+    const linewidth = linewidths[this._linewidth.is_scalar_value ? 0 : line_offset]
+    const data_mapping = main_gl_glyph.data_mapping
+    const points = main_gl_glyph._points!.get_array().subarray(point_offset, point_offset + 2*(nsegments + 3))
+    const padding = this._antialias + this._miter_limit*linewidth/2
+    // Data-coordinate buffers have not yet been mapped on the CPU, so use the
+    // plot-frame scissor. Screen-coordinate fallbacks retain the tighter box.
+    const scissor = data_mapping != null ? this.regl_wrapper.scissor :
+      this.regl_wrapper.scissor_for_points(points, padding, transform.pixel_ratio)
     const solid_props: LineGlyphProps = {
-      scissor: this.regl_wrapper.scissor,
+      scissor,
       viewport: this.regl_wrapper.viewport,
       canvas_size: [transform.width, transform.height],
       antialias: this._antialias / transform.pixel_ratio,
@@ -68,20 +79,23 @@ export abstract class BaseLineGL extends BaseGLGlyph {
       framebuffer,
       point_offset,
       line_offset,
+      data_mapping,
     }
-    if (this._is_dashed && this._dash_tex[line_offset] != null) {
+    const dash_index = this._dash_tex.length == 1 ? 0 : line_offset
+    if (this._is_dashed && this._dash_tex[dash_index] != null) {
       const dashed_props: LineDashGlyphProps = {
         ...solid_props,
         length_so_far: main_gl_glyph._length_so_far!,
-        dash_tex: this._dash_tex[line_offset],
+        dash_tex: this._dash_tex[dash_index],
         dash_tex_info: this._dash_tex_info!,
         dash_scale: this._dash_scale!,
         dash_offset: this._dash_offset!,
       }
       this.regl_wrapper.dashed_line()(dashed_props)
     } else {
-      this.regl_wrapper.solid_line()(solid_props)
+      this.regl_wrapper.solid_line(data_mapping != null)(solid_props)
     }
+    return scissor
   }
 
   protected abstract _get_visuals(): BaseLineVisuals
@@ -161,29 +175,38 @@ export abstract class BaseLineGL extends BaseGLGlyph {
     this._line_join.set_from_line_join(line_visuals.line_join)
 
     const {line_dash} = line_visuals
-    this._is_dashed = !(line_dash.is_Scalar() && line_dash.get(0).length == 0)
+    const dash_count = line_dash.is_Scalar() ? 1 : line_dash.length
+    const dash_patterns = new Array<number[]>(dash_count)
+    this._is_dashed = false
+    for (let i = 0; i < dash_count; i++) {
+      const pattern = normalize_dash_pattern(resolve_line_dash(line_dash.get(i)))
+      dash_patterns[i] = pattern
+      this._is_dashed ||= pattern.length != 0
+    }
+
+    // Visual updates replace, rather than append to, the previous texture map.
+    this._dash_tex = []
 
     if (this._is_dashed) {
       if (this._dash_offset == null) {
-        this._dash_offset = new Float32Buffer(this.regl_wrapper)
+        this._dash_offset = this.own(new Float32Buffer(this.regl_wrapper))
       }
       this._dash_offset.set_from_prop(line_visuals.line_dash_offset)
 
-      const n = line_dash.length
+      const n = dash_count
 
       if (this._dash_tex_info == null) {
-        this._dash_tex_info = new Float32Buffer(this.regl_wrapper, 4)
+        this._dash_tex_info = this.own(new Float32Buffer(this.regl_wrapper, 4))
       }
       const dash_tex_info = this._dash_tex_info.get_sized_array(4*n)
 
       if (this._dash_scale == null) {
-        this._dash_scale = new Float32Buffer(this.regl_wrapper)
+        this._dash_scale = this.own(new Float32Buffer(this.regl_wrapper))
       }
       const dash_scale = this._dash_scale.get_sized_array(n)
 
-      // All other dash properties are assumed vector rather than scalar.
       for (let i = 0; i < n; i++) {
-        const arr = resolve_line_dash(line_dash.get(i))
+        const arr = dash_patterns[i]
         if (arr.length > 0) {
           // This line is dashed
           const [tex_info, tex, scale] = this.regl_wrapper.get_dash(arr)
@@ -200,8 +223,8 @@ export abstract class BaseLineGL extends BaseGLGlyph {
         }
       }
 
-      this._dash_tex_info.update()
-      this._dash_scale.update()
+      this._dash_tex_info.update(line_dash.is_Scalar())
+      this._dash_scale.update(line_dash.is_Scalar())
     }
   }
 }

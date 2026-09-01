@@ -2,7 +2,7 @@ import type {Vec4} from "regl"
 import type {Transform} from "./base"
 import {BaseGLGlyph} from "./base"
 import {Float32Buffer, NormalizedUint8Buffer, Uint8Buffer} from "./buffer"
-import type {LineProps, FillProps, HatchProps, MarkerGlyphProps, GLMarkerType} from "./types"
+import type {LineProps, FillProps, HatchProps, MarkerGlyphProps, GLMarkerType, MarkerDataMapping} from "./types"
 import {marker_type_to_size_hint} from "./webgl_utils"
 import type * as visuals from "core/visuals"
 import type * as p from "core/properties"
@@ -21,39 +21,55 @@ export abstract class BaseMarkerGL extends BaseGLGlyph {
   private readonly _antialias: number = 1.5
 
   // data properties
-  protected readonly _centers = new Float32Buffer(this.regl_wrapper)
+  protected readonly _centers = this.own(new Float32Buffer(this.regl_wrapper, 2))
 
-  protected readonly _widths = new Float32Buffer(this.regl_wrapper)
-  protected readonly _heights = new Float32Buffer(this.regl_wrapper)
-  protected readonly _angles = new Float32Buffer(this.regl_wrapper)
-  protected readonly _auxs = new Float32Buffer(this.regl_wrapper)
+  protected readonly _widths = this.own(new Float32Buffer(this.regl_wrapper))
+  protected readonly _heights = this.own(new Float32Buffer(this.regl_wrapper))
+  protected readonly _angles = this.own(new Float32Buffer(this.regl_wrapper))
+  protected readonly _auxs = this.own(new Float32Buffer(this.regl_wrapper))
 
   // used by RectGL
   protected _border_radius: Vec4 = [0.0, 0.0, 0.0, 0.0]
   protected _border_radius_nonzero: boolean = false
 
   // indices properties
-  protected readonly _show = new Uint8Buffer(this.regl_wrapper)
+  protected readonly _show = this.own(new Uint8Buffer(this.regl_wrapper))
   protected _show_all: boolean = false
 
   // visual properties
-  protected readonly _linewidths = new Float32Buffer(this.regl_wrapper)
-  protected readonly _line_caps = new Uint8Buffer(this.regl_wrapper)
-  protected readonly _line_joins = new Uint8Buffer(this.regl_wrapper)
-  protected readonly _line_rgba = new NormalizedUint8Buffer(this.regl_wrapper, 4)
-  protected readonly _fill_rgba = new NormalizedUint8Buffer(this.regl_wrapper, 4)
+  protected readonly _linewidths = this.own(new Float32Buffer(this.regl_wrapper))
+  protected readonly _line_caps = this.own(new Uint8Buffer(this.regl_wrapper))
+  protected readonly _line_joins = this.own(new Uint8Buffer(this.regl_wrapper))
+  protected readonly _line_rgba = this.own(new NormalizedUint8Buffer(this.regl_wrapper, 4))
+  protected readonly _fill_rgba = this.own(new NormalizedUint8Buffer(this.regl_wrapper, 4))
 
   // Only needed if have hatch pattern, either all or none of the buffers are set.
   protected _have_hatch: boolean = false
-  protected readonly _hatch_patterns = new Uint8Buffer(this.regl_wrapper)
-  protected readonly _hatch_scales = new Float32Buffer(this.regl_wrapper)
-  protected readonly _hatch_weights = new Float32Buffer(this.regl_wrapper)
-  protected readonly _hatch_rgba = new NormalizedUint8Buffer(this.regl_wrapper, 4)
+  protected readonly _hatch_patterns = this.own(new Uint8Buffer(this.regl_wrapper))
+  protected readonly _hatch_scales = this.own(new Float32Buffer(this.regl_wrapper))
+  protected readonly _hatch_weights = this.own(new Float32Buffer(this.regl_wrapper))
+  protected readonly _hatch_rgba = this.own(new NormalizedUint8Buffer(this.regl_wrapper, 4))
 
   // Avoiding use of nan or inf to represent missing data in webgl as shaders may
   // have reduced floating point precision. So here using a large-ish negative
   // value instead.
   protected static readonly missing_point = -10000
+
+  protected get data_mapping_mode(): MarkerDataMapping {
+    return this.data_mapping == null ? "none" : "point"
+  }
+
+  protected get circular_streaming(): boolean {
+    return false
+  }
+
+  get marker_circular_offset(): number {
+    return this.circular_streaming ? this._centers.circular_offset : 0
+  }
+
+  get uses_circular_streaming(): boolean {
+    return this.circular_streaming
+  }
 
   /**
    * Selects appropriate geometry buffers for rendering a marker glyph.
@@ -119,27 +135,42 @@ export abstract class BaseMarkerGL extends BaseGLGlyph {
     main_gl_glyph: BaseMarkerGL,
     show: Uint8Buffer = this._show,
   ): void {
-    const props_no_hatch: MarkerGlyphProps = {
-      scissor: this.regl_wrapper.scissor,
-      viewport: this.regl_wrapper.viewport,
-      canvas_size: [transform.width, transform.height],
-      size_hint: marker_type_to_size_hint(marker_type),
-      nmarkers: main_gl_glyph.nvertices,
-      antialias: this._antialias / transform.pixel_ratio,
-      show,
-      center: main_gl_glyph._centers,  // Always from main (position overrides not supported)
-      ...this.marker_props(this, main_gl_glyph),
-      ...this.line_props,
-      ...this.fill_props,
-    }
+    const data_mapping = main_gl_glyph.data_mapping
+    const data_mapping_mode = main_gl_glyph.data_mapping_mode
+    const total = main_gl_glyph.nvertices
+    const offset = main_gl_glyph.marker_circular_offset
+    const ranges = offset == 0
+      ? [{offset: 0, length: total}]
+      : [{offset, length: total - offset}, {offset: 0, length: offset}]
 
-    if (this._have_hatch) {
-      const props_hatch = {...props_no_hatch, ...this.hatch_props}
-      const draw = this.regl_wrapper.marker_hatch(marker_type)
-      draw(props_hatch)
-    } else {
-      const draw = this.regl_wrapper.marker_no_hatch(marker_type)
-      draw(props_no_hatch)
+    for (const range of ranges) {
+      if (range.length == 0) {
+        continue
+      }
+      const props_no_hatch: MarkerGlyphProps = {
+        scissor: this.regl_wrapper.scissor,
+        viewport: this.regl_wrapper.viewport,
+        canvas_size: [transform.width, transform.height],
+        size_hint: marker_type_to_size_hint(marker_type),
+        nmarkers: range.length,
+        marker_offset: range.offset,
+        antialias: this._antialias / transform.pixel_ratio,
+        show,
+        center: main_gl_glyph._centers,  // Always from main (position overrides not supported)
+        data_mapping,
+        ...this.marker_props(this, main_gl_glyph),
+        ...this.line_props,
+        ...this.fill_props,
+      }
+
+      if (this._have_hatch) {
+        const props_hatch = {...props_no_hatch, ...this.hatch_props}
+        const draw = this.regl_wrapper.marker_hatch(marker_type, data_mapping_mode)
+        draw(props_hatch)
+      } else {
+        const draw = this.regl_wrapper.marker_no_hatch(marker_type, data_mapping_mode)
+        draw(props_no_hatch)
+      }
     }
   }
 
@@ -150,6 +181,7 @@ export abstract class BaseMarkerGL extends BaseGLGlyph {
       this._set_once()
     }
     this._set_data(data_changed)
+    this.consume_stream_geometry()
   }
 
   protected abstract _set_data(data_changed?: boolean): void
@@ -160,19 +192,24 @@ export abstract class BaseMarkerGL extends BaseGLGlyph {
 
   protected _set_visuals(): void {
     const {line, fill, hatch} = this._get_visuals()
+    const delta = this.stream_visuals_delta ?? undefined
+    const circular_offset = this.circular_streaming ? this.marker_circular_offset : undefined
 
-    this._linewidths.set_from_prop(line.line_width)
-    this._line_caps.set_from_line_cap(line.line_cap)
-    this._line_joins.set_from_line_join(line.line_join)
-    this._line_rgba.set_from_color(line.line_color, line.line_alpha)
-    this._fill_rgba.set_from_color(fill.fill_color, fill.fill_alpha)
+    this._linewidths.set_from_prop(line.line_width, delta, circular_offset)
+    this._line_caps.set_from_line_cap(line.line_cap, delta, circular_offset)
+    this._line_joins.set_from_line_join(line.line_join, delta, circular_offset)
+    this._line_rgba.set_from_color(line.line_color, line.line_alpha, delta, circular_offset)
+    this._fill_rgba.set_from_color(fill.fill_color, fill.fill_alpha, delta, circular_offset)
 
     this._have_hatch = hatch.doit
     if (this._have_hatch) {
-      this._hatch_patterns.set_from_hatch_pattern(hatch.hatch_pattern as p.Uniform<HatchPattern>)
-      this._hatch_scales.set_from_prop(hatch.hatch_scale)
-      this._hatch_weights.set_from_prop(hatch.hatch_weight)
-      this._hatch_rgba.set_from_color(hatch.hatch_color, hatch.hatch_alpha)
+      this._hatch_patterns.set_from_hatch_pattern(
+        hatch.hatch_pattern as p.Uniform<HatchPattern>, delta, circular_offset,
+      )
+      this._hatch_scales.set_from_prop(hatch.hatch_scale, delta, circular_offset)
+      this._hatch_weights.set_from_prop(hatch.hatch_weight, delta, circular_offset)
+      this._hatch_rgba.set_from_color(hatch.hatch_color, hatch.hatch_alpha, delta, circular_offset)
     }
+    this.consume_stream_visuals()
   }
 }

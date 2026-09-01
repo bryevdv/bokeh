@@ -68,6 +68,7 @@ import {div} from "@bokehjs/core/dom"
 import type {LRTB} from "@bokehjs/core/util/bbox"
 import {sprintf} from "@bokehjs/core/util/templating"
 import {assert} from "@bokehjs/core/util/assert"
+import {settings} from "@bokehjs/core/settings"
 import type * as p from "@bokehjs/core/properties"
 import {load_image} from "@bokehjs/core/util/image"
 
@@ -2635,9 +2636,12 @@ describe("Bug", () => {
       await display(p)
     })
 
-    it(`doesn't allow to render many (N=${N}) webgl glyphs efficiently`, async () => {
+    it(`should batch many (N=${N}) compatible webgl glyphs`, async () => {
       const p = plot("webgl")
-      await display(p)
+      const {view} = await display(p)
+      const {submitted, draw_calls} = view.canvas_view.webgl!.regl_wrapper.batch_stats
+      expect(submitted >= N).to.be.true
+      expect(draw_calls < submitted).to.be.true
     })
   })
 
@@ -3257,7 +3261,7 @@ describe("Bug", () => {
   })
 
   describe("in issue #13150", () => {
-    it("doesn't allow correctly render GraphRenderer with output_backend='webgl'", async () => {
+    it("should preserve edge/node ordering with output_backend='webgl'", async () => {
       function plot(output_backend: OutputBackend) {
         const layout_provider = new StaticLayoutProvider({
           graph_layout: new Map([
@@ -3286,6 +3290,36 @@ describe("Bug", () => {
       const p2 = plot("webgl")
 
       await display(row([p0, p1, p2]))
+    })
+
+    it("should interleave WebGL edges with Canvas-only graph nodes", async () => {
+      function plot(output_backend: OutputBackend) {
+        const layout_provider = new StaticLayoutProvider({
+          graph_layout: new Map([
+            [0, [0, 0]],
+            [1, [1, 1]],
+            [2, [2, 0]],
+          ]),
+        })
+        const node_renderer = new GlyphRenderer({
+          glyph: new Text({text: "●", anchor: "center", text_font_size: "28px", text_color: "firebrick"}),
+          data_source: new ColumnDataSource({data: {index: [0, 1, 2]}}),
+        })
+        const edge_renderer = new GlyphRenderer({
+          glyph: new MultiLine({line_width: 12, line_color: "navy"}),
+          data_source: new ColumnDataSource({data: {start: [0, 1], end: [1, 2]}}),
+        })
+        const graph = new GraphRenderer({layout_provider, node_renderer, edge_renderer})
+        return fig([250, 200], {output_backend, title: output_backend, renderers: [graph]})
+      }
+
+      const force_webgl = settings.force_webgl
+      settings.force_webgl = false
+      try {
+        await display(row([plot("canvas"), plot("webgl")]))
+      } finally {
+        settings.force_webgl = force_webgl
+      }
     })
   })
 

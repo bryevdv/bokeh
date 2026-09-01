@@ -1,6 +1,11 @@
 import {expect} from "#framework/assertions"
 
-import {expand_to_per_vertex} from "@bokehjs/models/glyphs/webgl/buffer"
+import {expand_to_per_vertex, Float32Buffer, NormalizedUint8Buffer, Uint8Buffer} from "@bokehjs/models/glyphs/webgl/buffer"
+import type {ReglWrapper} from "@bokehjs/models/glyphs/webgl/regl_wrap"
+import type {StreamDelta} from "@bokehjs/core/patching"
+import {UniformScalar, UniformVector} from "@bokehjs/core/uniforms"
+import {encode_rgba} from "@bokehjs/core/util/color"
+import type {Buffer} from "regl"
 
 // Lightweight mock objects that satisfy expand_to_per_vertex's duck-typed interfaces.
 function mock_src(data: number[], is_scalar: boolean) {
@@ -145,5 +150,252 @@ describe("expand_to_per_vertex", () => {
       5, 6, 7, 8,      // polygon 1, vertex 1
       9, 10, 11, 12,   // polygon 2, vertex 0
     ])
+  })
+})
+
+describe("WrappedBuffer", () => {
+  it("should preserve positive alpha at normalized RGBA8 precision", () => {
+    const gpu_buffer = Object.assign((_options: unknown) => {}, {destroy() {}}) as unknown as Buffer
+    const regl_wrapper = {
+      flush() {},
+      flush_resource() {},
+      buffer() { return gpu_buffer },
+    } as unknown as ReglWrapper
+    const buffer = new NormalizedUint8Buffer(regl_wrapper, 4)
+    const color = new UniformScalar(encode_rgba([31, 119, 180, 255]), 10_000)
+
+    buffer.set_from_color(color, new UniformScalar(0.001, 10_000))
+    expect(buffer.get_array()[3]).to.be.equal(1)
+    expect(buffer.to_attribute_config()).to.be.equal({
+      buffer: gpu_buffer, divisor: 1, normalized: true, offset: 0,
+    })
+    const expanded = new NormalizedUint8Buffer(regl_wrapper, 4)
+    expand_to_per_vertex(buffer, expanded, [3, 4], 4)
+    expect(expanded.to_per_vertex_config()).to.be.equal({
+      buffer: gpu_buffer, divisor: 0, normalized: true, offset: 0,
+    })
+
+    buffer.set_from_color(color, new UniformScalar(0, 10_000))
+    expect(buffer.get_array()[3]).to.be.equal(0)
+    expect(buffer.to_attribute_config()).to.be.equal({
+      buffer: gpu_buffer, divisor: 1, normalized: true, offset: 0,
+    })
+
+    buffer.set_from_color(color, new UniformVector([0.001, 0.5]))
+    expect(buffer.get_array().slice(0, 8)).to.be.equal(new Uint8Array([31, 119, 180, 1, 31, 119, 180, 128]))
+    expect(buffer.to_attribute_config()).to.be.equal({
+      buffer: gpu_buffer, divisor: 1, normalized: true, offset: 0,
+    })
+
+    const unnormalized = new Uint8Buffer(regl_wrapper, 4)
+    unnormalized.set_from_color(color, new UniformScalar(0.001, 10_000))
+    expect(unnormalized.get_array()[3]).to.be.equal(0)
+  })
+
+  it("should release its GPU buffer exactly once", () => {
+    let destroyed = 0
+    const gpu_buffer = Object.assign((_options: unknown) => {}, {
+      destroy() { destroyed++ },
+    }) as unknown as Buffer
+    const regl_wrapper = {
+      flush() {},
+      flush_resource() {},
+      buffer() { return gpu_buffer },
+    } as unknown as ReglWrapper
+
+    const buffer = new Float32Buffer(regl_wrapper)
+    buffer.set_from_array([1, 2, 3])
+    buffer.destroy()
+    buffer.destroy()
+
+    expect(destroyed).to.be.equal(1)
+    expect(buffer.length).to.be.equal(0)
+  })
+
+  it("should upload sparse changes with byte offsets", () => {
+    const updates: {data: number[], offset: number}[] = []
+    const gpu_buffer = Object.assign((_options: unknown) => {}, {
+      subdata(data: Float32Array, offset: number) {
+        updates.push({data: [...data], offset})
+      },
+      destroy() {},
+    }) as unknown as Buffer
+    const regl_wrapper = {
+      flush() {},
+      flush_resource() {},
+      buffer() { return gpu_buffer },
+    } as unknown as ReglWrapper
+
+    const buffer = new Float32Buffer(regl_wrapper)
+    buffer.set_from_array([1, 2, 3, 4])
+    const revision = buffer.uploaded_revision
+    const array = buffer.get_array()
+    array[1] = 20
+    array[2] = 30
+    buffer.update_range(1, 2)
+
+    expect(updates).to.be.equal([{data: [20, 30], offset: Float32Array.BYTES_PER_ELEMENT}])
+    expect(buffer.uploaded_revision).to.be.equal(revision + 1)
+    expect(buffer.upload_stats).to.be.equal({full_uploads: 1, partial_uploads: 1, bytes: 6*Float32Array.BYTES_PER_ELEMENT})
+
+    buffer.reset_upload_stats()
+    expect(buffer.upload_stats).to.be.equal({full_uploads: 0, partial_uploads: 0, bytes: 0})
+  })
+
+  it("should coalesce sparse changes without relying on regl buffer internals", () => {
+    const updates: {data: number[], offset: number}[] = []
+    const gpu_buffer = Object.assign((_options: unknown) => {}, {
+      subdata(data: Float32Array, offset: number) {
+        updates.push({data: [...data], offset})
+      },
+      destroy() {},
+    }) as unknown as Buffer
+    const regl_wrapper = {
+      flush() {},
+      flush_resource() {},
+      buffer() { return gpu_buffer },
+    } as unknown as ReglWrapper
+
+    const buffer = new Float32Buffer(regl_wrapper)
+    buffer.set_from_array([1, 2, 3, 4, 5, 6])
+    const array = buffer.get_array()
+    array[2] = 30
+    array[3] = 40
+    array[5] = 60
+    buffer.update_ranges([5, 3, 2, 3])
+
+    expect(updates).to.be.equal([
+      {data: [30, 40], offset: 2*Float32Array.BYTES_PER_ELEMENT},
+      {data: [60], offset: 5*Float32Array.BYTES_PER_ELEMENT},
+    ])
+    expect(buffer.upload_stats).to.be.equal({full_uploads: 1, partial_uploads: 2, bytes: 9*Float32Array.BYTES_PER_ELEMENT})
+  })
+
+  it("should fall back to a full upload when the CPU array changes size", () => {
+    let full_uploads = 0
+    let sparse_uploads = 0
+    const gpu_buffer = Object.assign((_options: unknown) => { full_uploads++ }, {
+      subdata() { sparse_uploads++ },
+      destroy() {},
+    }) as unknown as Buffer
+    const regl_wrapper = {
+      flush() {},
+      flush_resource() {},
+      buffer() { return gpu_buffer },
+    } as unknown as ReglWrapper
+
+    const buffer = new Float32Buffer(regl_wrapper)
+    buffer.set_from_array([1, 2, 3])
+    buffer.get_sized_array(4).set([10, 20, 30, 40])
+    buffer.update_range(1, 1)
+
+    expect(full_uploads).to.be.equal(1)
+    expect(sparse_uploads).to.be.equal(0)
+  })
+
+  it("should shift retained values and only evaluate the streamed tail during fixed rollover", () => {
+    const gpu_buffer = Object.assign((_options: unknown) => {}, {destroy() {}}) as unknown as Buffer
+    const regl_wrapper = {
+      flush() {},
+      flush_resource() {},
+      buffer() { return gpu_buffer },
+    } as unknown as ReglWrapper
+    const buffer = new Float32Buffer(regl_wrapper)
+    buffer.set_from_prop(new UniformVector([1, 2, 3, 4, 5]))
+    buffer.reset_upload_stats()
+
+    const accesses: number[] = []
+    class TrackingUniformVector extends UniformVector<number> {
+      override get(i: number): number {
+        accesses.push(i)
+        return super.get(i)
+      }
+    }
+    const delta: StreamDelta = {
+      old_length: 5,
+      new_length: 5,
+      new_rows: 2,
+      removed_rows: 2,
+      affected_ranges: [{start: 0, end: 5}],
+    }
+    buffer.set_from_prop(new TrackingUniformVector([3, 4, 5, 6, 7]), delta)
+
+    expect(buffer.get_array()).to.be.equal(new Float32Array([3, 4, 5, 6, 7]))
+    expect(accesses).to.be.equal([3, 4])
+    expect(buffer.upload_stats).to.be.equal({
+      full_uploads: 1,
+      partial_uploads: 0,
+      bytes: 5*Float32Array.BYTES_PER_ELEMENT,
+    })
+  })
+
+  it("should retain fixed-rollover values in a partially uploaded circular buffer", () => {
+    const updates: {data: number[], offset: number}[] = []
+    const gpu_buffer = Object.assign((_options: unknown) => {}, {
+      subdata(data: Float32Array, offset: number) {
+        updates.push({data: [...data], offset})
+      },
+      destroy() {},
+    }) as unknown as Buffer
+    const regl_wrapper = {
+      flush() {},
+      flush_resource() {},
+      buffer() { return gpu_buffer },
+    } as unknown as ReglWrapper
+    const buffer = new Float32Buffer(regl_wrapper)
+    buffer.set_from_prop(new UniformVector([1, 2, 3, 4, 5]))
+    buffer.reset_upload_stats()
+
+    const delta: StreamDelta = {
+      old_length: 5,
+      new_length: 5,
+      new_rows: 2,
+      removed_rows: 2,
+      affected_ranges: [{start: 0, end: 5}],
+    }
+    buffer.set_from_prop(new UniformVector([3, 4, 5, 6, 7]), delta, 2)
+    expect(buffer.get_array()).to.be.equal(new Float32Array([6, 7, 3, 4, 5]))
+    expect(buffer.get_logical_array()).to.be.equal(new Float32Array([3, 4, 5, 6, 7]))
+    expect(buffer.circular_offset).to.be.equal(2)
+
+    buffer.set_from_prop(new UniformVector([5, 6, 7, 8, 9]), delta, 4)
+    expect(buffer.get_logical_array()).to.be.equal(new Float32Array([5, 6, 7, 8, 9]))
+
+    buffer.set_from_prop(new UniformVector([7, 8, 9, 10, 11]), delta, 1)
+    expect(buffer.get_logical_array()).to.be.equal(new Float32Array([7, 8, 9, 10, 11]))
+    expect(buffer.circular_offset).to.be.equal(1)
+    expect(updates).to.be.equal([
+      {data: [6, 7], offset: 0},
+      {data: [8, 9], offset: 2*Float32Array.BYTES_PER_ELEMENT},
+      {data: [10], offset: 4*Float32Array.BYTES_PER_ELEMENT},
+      {data: [11], offset: 0},
+    ])
+    expect(buffer.upload_stats).to.be.equal({
+      full_uploads: 0,
+      partial_uploads: 4,
+      bytes: 6*Float32Array.BYTES_PER_ELEMENT,
+    })
+  })
+
+  it("should rebuild the whole buffer when streaming without fixed rollover", () => {
+    const gpu_buffer = Object.assign((_options: unknown) => {}, {destroy() {}}) as unknown as Buffer
+    const regl_wrapper = {
+      flush() {},
+      flush_resource() {},
+      buffer() { return gpu_buffer },
+    } as unknown as ReglWrapper
+    const buffer = new Float32Buffer(regl_wrapper)
+    buffer.set_from_prop(new UniformVector([1, 2, 3]))
+
+    const delta: StreamDelta = {
+      old_length: 3,
+      new_length: 5,
+      new_rows: 2,
+      removed_rows: 0,
+      affected_ranges: [{start: 3, end: 5}],
+    }
+    buffer.set_from_prop(new UniformVector([1, 2, 3, 4, 5]), delta)
+
+    expect(buffer.get_array()).to.be.equal(new Float32Array([1, 2, 3, 4, 5]))
   })
 })

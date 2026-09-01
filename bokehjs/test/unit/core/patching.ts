@@ -1,7 +1,7 @@
 import {expect} from "#framework/assertions"
 
 import {difference} from "@bokehjs/core/util/set"
-import {stream_to_column, slice, patch_to_column} from "@bokehjs/core/patching"
+import {stream_to_column, stream_to_columns, slice, patch_to_column} from "@bokehjs/core/patching"
 import {ndarray, Int32NDArray, Float32NDArray, Float64NDArray} from "@bokehjs/core/util/ndarray"
 import {Slice} from "@bokehjs/core/util/slice"
 
@@ -304,6 +304,10 @@ describe("core/patching module", () => {
       const a1 = [1, 2, 3, 4, 5]
       const r1 = stream_to_column(a1, [100, 200, 300], 6)
       expect(r1).to.be.equal([3, 4, 5, 100, 200, 300])
+
+      const a2 = [1, 2, 3, 4, 5]
+      const r2 = stream_to_column(a2, [100, 200, 300, 400, 500, 600], 5)
+      expect(r2).to.be.equal([200, 300, 400, 500, 600])
     })
 
     it("should stream Float32 to Float32", () => {
@@ -317,6 +321,7 @@ describe("core/patching module", () => {
       const a0 = new Float32NDArray([1, 2, 3, 4, 5])
       const r0 = stream_to_column(a0, [100, 200, 300], 5)
       expect(r0).to.be.equal(new Float32NDArray([4, 5, 100, 200, 300]))
+      expect(r0).to.be.identical(a0)
 
       // test when col is not at rollover len but will exceed
       const a1 = new Float32NDArray([1, 2, 3, 4, 5])
@@ -327,6 +332,10 @@ describe("core/patching module", () => {
       const a2 = new Float32NDArray([1, 2, 3, 4, 5])
       const r2 = stream_to_column(a2, [100, 200, 300], 10)
       expect(r2).to.be.equal(new Float32NDArray([1, 2, 3, 4, 5, 100, 200, 300]))
+
+      const a3 = new Float32NDArray([1, 2, 3, 4, 5])
+      const r3 = stream_to_column(a3, [100, 200, 300, 400, 500, 600], 5)
+      expect(r3).to.be.equal(new Float32NDArray([200, 300, 400, 500, 600]))
     })
 
     it("should stream Float64 to Float64", () => {
@@ -385,6 +394,51 @@ describe("core/patching module", () => {
       const a = [1, 2, 3, 4, 5]
       const r = stream_to_column(a, new Float64NDArray([100, 200]))
       expect(r).to.be.equal(new Float64NDArray([1, 2, 3, 4, 5, 100, 200]))
+    })
+  })
+
+  describe("stream_to_columns", () => {
+
+    it("should describe appended rows", () => {
+      const data = {x: [1, 2, 3], y: [4, 5, 6]}
+      const delta = stream_to_columns(data, {x: [7, 8], y: [9, 10]})
+
+      expect(data).to.be.equal({x: [1, 2, 3, 7, 8], y: [4, 5, 6, 9, 10]})
+      expect(delta).to.be.equal({
+        old_length: 3,
+        new_length: 5,
+        new_rows: 2,
+        removed_rows: 0,
+        affected_ranges: [{start: 3, end: 5}],
+      })
+    })
+
+    it("should describe rollover rows", () => {
+      const data = {x: [1, 2, 3, 4, 5], y: [6, 7, 8, 9, 10]}
+      const delta = stream_to_columns(data, {x: [11, 12], y: [13, 14]}, 5)
+
+      expect(data).to.be.equal({x: [3, 4, 5, 11, 12], y: [8, 9, 10, 13, 14]})
+      expect(delta).to.be.equal({
+        old_length: 5,
+        new_length: 5,
+        new_rows: 2,
+        removed_rows: 2,
+        affected_ranges: [{start: 0, end: 5}],
+      })
+    })
+
+    it("should describe streamed data larger than rollover", () => {
+      const data = {x: [1, 2, 3], y: [4, 5, 6]}
+      const delta = stream_to_columns(data, {x: [7, 8, 9, 10], y: [11, 12, 13, 14]}, 2)
+
+      expect(data).to.be.equal({x: [9, 10], y: [13, 14]})
+      expect(delta).to.be.equal({
+        old_length: 3,
+        new_length: 2,
+        new_rows: 2,
+        removed_rows: 3,
+        affected_ranges: [{start: 0, end: 2}],
+      })
     })
   })
 })

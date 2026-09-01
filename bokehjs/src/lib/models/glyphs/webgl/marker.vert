@@ -1,4 +1,6 @@
-precision highp float;
+#include <bokeh_vertex_precision>
+#include <bokeh_screen_projection>
+#include <bokeh_data_mapping>
 
 attribute vec2 a_position;
 attribute vec2 a_center;
@@ -121,7 +123,27 @@ vec2 enclosing_size() {
 
 void main()
 {
-#if defined(USE_RECT) || defined(USE_ROUND_RECT) || defined(USE_HEX_TILE)
+#ifdef RECT_DATA_MAPPING
+  vec2 corner0 = bokeh_map_data(a_center);
+  vec2 corner1 = bokeh_map_data(vec2(a_width, a_height));
+  #ifdef ROUND_DATA_X
+    corner0.x = floor(corner0.x + 0.5);
+    corner1.x = floor(corner1.x + 0.5);
+  #endif
+  #ifdef ROUND_DATA_Y
+    corner0.y = floor(corner0.y + 0.5);
+    corner1.y = floor(corner1.y + 0.5);
+  #endif
+  vec2 center = 0.5*(corner0 + corner1);
+#elif defined(DATA_MAPPING)
+  vec2 center = bokeh_map_data(a_center);
+#else
+  vec2 center = a_center;
+#endif
+
+#ifdef RECT_DATA_MAPPING
+  v_size = abs(corner1 - corner0);
+#elif defined(USE_RECT) || defined(USE_ROUND_RECT) || defined(USE_HEX_TILE)
   v_size = vec2(a_width, a_height);
 #elif defined(USE_ANNULUS) || defined(USE_ANNULAR_WEDGE) || defined(USE_WEDGE)
   v_size = vec2(2.0*a_width, 2.0*a_width);
@@ -199,13 +221,13 @@ void main()
   v_coords = a_position*enclosing_size();
 
 #if defined(USE_CIRCLE) || defined(USE_ANNULUS) || defined(USE_ANNULAR_WEDGE) || defined(USE_WEDGE)
-  vec2 pos = a_center + v_coords;
+  vec2 pos = center + v_coords;
 #else
   float c = cos(-a_angle);
   float s = sin(-a_angle);
   mat2 rotation = mat2(c, -s, s, c);
 
-  vec2 pos = a_center + rotation*v_coords;
+  vec2 pos = center + rotation*v_coords;
 #endif
 
 #ifdef HATCH
@@ -213,7 +235,5 @@ void main()
   v_hatch_coords = pos - 0.5;
 #endif
 
-  pos += 0.5; // Make up for Bokeh's offset.
-  pos /= u_canvas_size; // 0 to 1.
-  gl_Position = vec4(2.0*pos.x - 1.0, 1.0 - 2.0*pos.y, 0.0, 1.0);
+  gl_Position = bokeh_screen_to_clip(pos, u_canvas_size);
 }

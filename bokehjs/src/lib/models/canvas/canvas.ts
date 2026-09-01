@@ -8,6 +8,7 @@ import {load_module} from "core/util/modules"
 import type {Context2d} from "core/util/canvas"
 import {CanvasLayer} from "core/util/canvas"
 import type {BBox} from "core/util/bbox"
+import type {Size} from "core/types"
 import {UIElement, UIElementView} from "../ui/ui_element"
 import type {PlotView} from "../plots/plot"
 import type {ReglWrapper} from "../glyphs/webgl/regl_wrap"
@@ -15,6 +16,8 @@ import type {StyleSheetLike} from "core/dom"
 import {InlineStyleSheet} from "core/dom"
 import * as canvas_css from "styles/canvas.css"
 import icons_css from "styles/icons.css"
+import type {WebGLRenderCommand} from "./webgl_compositor"
+import {WebGLCompositor} from "./webgl_compositor"
 
 // Notes on WebGL support:
 // Glyps can be rendered into the original 2D canvas, or in a (hidden)
@@ -28,17 +31,51 @@ import icons_css from "styles/icons.css"
 // marker that we use throughout that determines whether we have gl support.
 
 export type WebGLState = {
-  readonly canvas: HTMLCanvasElement
+  readonly canvas: HTMLCanvasElement | OffscreenCanvas
   readonly regl_wrapper: ReglWrapper
+  readonly backend: "webgl2" | "webgl1"
+}
+
+/** Cache a successful asynchronous initialization while sharing in-flight work.
+ *
+ * A rejected initialization can be retried, but concurrent callers always
+ * observe the same promise and therefore the same initialized resource. */
+export function once_async<T>(initialize: () => Promise<T>): () => Promise<T> {
+  let promise: Promise<T> | undefined
+  return () => {
+    if (promise == null) {
+      const pending = initialize()
+      promise = pending
+      void pending.catch(() => {
+        if (promise === pending) {
+          promise = undefined
+        }
+      })
+    }
+    return promise
+  }
 }
 
 async function init_webgl(): Promise<WebGLState | null> {
   // We use a global invisible canvas and gl context. By having a global context,
   // we avoid the limitation of max 16 contexts that most browsers have.
-  const canvas = document.createElement("canvas")
-  const gl = canvas.getContext(
-    "webgl", {alpha: true, antialias: false, depth: false, premultipliedAlpha: true},
-  )
+  const options = {alpha: true, antialias: false, depth: false, premultipliedAlpha: true}
+  const get_context = (canvas: HTMLCanvasElement | OffscreenCanvas) => {
+    const gl2 = canvas.getContext("webgl2", options) as WebGL2RenderingContext | null
+    const gl1 = gl2 == null ? canvas.getContext("webgl", options) as WebGLRenderingContext | null : null
+    return {gl2, gl: gl2 ?? gl1}
+  }
+
+  // A detached HTML WebGL canvas can still acquire a compositor surface in
+  // WebKit and leak that surface beside the last visible plot. OffscreenCanvas
+  // has no layout/compositor box and is also the natural home for shared GL.
+  let canvas: HTMLCanvasElement | OffscreenCanvas = typeof OffscreenCanvas != "undefined" ?
+    new OffscreenCanvas(0, 0) : document.createElement("canvas")
+  let {gl2, gl} = get_context(canvas)
+  if (gl == null && typeof OffscreenCanvas != "undefined" && canvas instanceof OffscreenCanvas) {
+    canvas = document.createElement("canvas")
+    ;({gl2, gl} = get_context(canvas))
+  }
 
   // If WebGL is available, we store a reference to the ReGL wrapper on
   // the ctx object, because that's what gets passed everywhere.
@@ -47,7 +84,7 @@ async function init_webgl(): Promise<WebGLState | null> {
     if (webgl != null) {
       const regl_wrapper = webgl.get_regl(gl)
       if (regl_wrapper.has_webgl) {
-        return {canvas, regl_wrapper}
+        return {canvas, regl_wrapper, backend: gl2 != null ? "webgl2" : "webgl1"}
       } else {
         logger.trace("WebGL is supported, but not the required extensions")
       }
@@ -61,21 +98,21 @@ async function init_webgl(): Promise<WebGLState | null> {
   return null
 }
 
-const global_webgl: () => Promise<WebGLState | null> = (() => {
-  let _global_webgl: WebGLState | null | undefined
-  return async () => {
-    if (_global_webgl !== undefined) {
-      return _global_webgl
-    } else {
-      return _global_webgl = await init_webgl()
-    }
-  }
-})()
+const global_webgl = once_async(init_webgl)
 
 export class CanvasView extends UIElementView {
   declare model: Canvas
 
   webgl: WebGLState | null = null
+  private _webgl_dirty: boolean = false
+  private _webgl_size: Size = {width: 0, height: 0}
+  private readonly _webgl_compositor = new WebGLCompositor()
+  private readonly _webgl_context_lost = (event: Event) => event.preventDefault()
+  private readonly _webgl_context_restored = () => {
+    for (const plot_view of this.plot_views) {
+      plot_view.restore_webgl()
+    }
+  }
 
   underlays_el: HTMLElement
   primary: CanvasLayer
@@ -119,10 +156,14 @@ export class CanvasView extends UIElementView {
       if (settings.force_webgl && this.webgl == null) {
         throw new Error("webgl is not available")
       }
+      this.webgl?.canvas.addEventListener("webglcontextlost", this._webgl_context_lost)
+      this.webgl?.canvas.addEventListener("webglcontextrestored", this._webgl_context_restored)
     }
   }
 
   override remove(): void {
+    this.webgl?.canvas.removeEventListener("webglcontextlost", this._webgl_context_lost)
+    this.webgl?.canvas.removeEventListener("webglcontextrestored", this._webgl_context_restored)
     this.ui_event_bus.remove()
     super.remove()
   }
@@ -199,36 +240,90 @@ export class CanvasView extends UIElementView {
     // Prepare WebGL for a drawing pass
     const {webgl} = this
     if (webgl != null) {
-      // Sync canvas size
+      this._webgl_compositor.reset()
+      // Grow the shared drawing buffer as needed, but never shrink it between
+      // plots. Resizing a WebGL canvas reallocates its drawing buffer, which is
+      // prohibitively expensive for grids containing differently sized plots.
       const {width, height} = this.bbox
-      webgl.canvas.width = this.pixel_ratio*width
-      webgl.canvas.height = this.pixel_ratio*height
+      const canvas_width = Math.floor(this.pixel_ratio*width)
+      const canvas_height = Math.floor(this.pixel_ratio*height)
+      this._webgl_size = {width: canvas_width, height: canvas_height}
+      if (webgl.canvas.width < canvas_width) {
+        webgl.canvas.width = canvas_width
+      }
+      if (webgl.canvas.height < canvas_height) {
+        webgl.canvas.height = canvas_height
+      }
       const {x: sx, y: sy, width: w, height: h} = frame_box
       const {xview, yview} = this.bbox
       const vx = xview.compute(sx)
       const vy = yview.compute(sy + h)
       const ratio = this.pixel_ratio
-      webgl.regl_wrapper.set_scissor(ratio*vx, ratio*vy, ratio*w, ratio*h)
+      // WebGL uses a bottom-left origin. Screen-coordinate shaders use the
+      // full retained canvas size, which anchors smaller plots at its top-left.
+      const y_offset = webgl.canvas.height - canvas_height
+      webgl.regl_wrapper.set_scissor(ratio*vx, y_offset + ratio*vy, ratio*w, ratio*h)
       this._clear_webgl()
+      this._webgl_dirty = false
+    }
+  }
+
+  mark_webgl_dirty(): void {
+    this._webgl_dirty = true
+  }
+
+  reset_webgl_stats(): void {
+    this.webgl?.regl_wrapper.reset_batch_stats()
+  }
+
+  get webgl_diagnostics(): {
+    dirty: boolean
+    compositor_pending: number
+    backend: WebGLState["backend"] | null
+  } {
+    return {
+      dirty: this._webgl_dirty,
+      compositor_pending: this._webgl_compositor.pending,
+      backend: this.webgl?.backend ?? null,
+    }
+  }
+
+  enqueue_webgl(command: WebGLRenderCommand): void {
+    this._webgl_compositor.enqueue(command)
+  }
+
+  flush_webgl(): void {
+    const {webgl} = this
+    if (webgl != null) {
+      this._webgl_compositor.flush()
+      webgl.regl_wrapper.flush()
     }
   }
 
   blit_webgl(ctx: Context2d): void {
     // This should be called when the ctx has no state except the HiDPI transform
     const {webgl} = this
-    if (webgl != null && webgl.canvas.width*webgl.canvas.height > 0) {
+    this.flush_webgl()
+    const {width, height} = this._webgl_size
+    if (webgl != null && this._webgl_dirty && width*height > 0) {
+      webgl.regl_wrapper.finish()
       // Blit gl canvas into the 2D canvas. To do 1-on-1 blitting, we need
       // to remove the HiDPI transform, then blit, then restore.
       // ctx.globalCompositeOperation = "source-over"  -> OK; is the default
       logger.debug("Blitting WebGL canvas")
       ctx.restore()
-      ctx.drawImage(webgl.canvas, 0, 0)
+      if (webgl.canvas.width == width && webgl.canvas.height == height) {
+        ctx.drawImage(webgl.canvas, 0, 0)
+      } else {
+        ctx.drawImage(webgl.canvas, 0, 0, width, height, 0, 0, width, height)
+      }
       // Set back the HiDPI transform
       ctx.save()
       const ratio = this.pixel_ratio
       ctx.scale(ratio, ratio)
       ctx.translate(0.5, 0.5)
       this._clear_webgl()
+      this._webgl_dirty = false
     }
   }
 

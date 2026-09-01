@@ -7,16 +7,19 @@ import type {PatchView} from "../patch"
 import type {AccumulateProps, LineGlyphProps, LineDashGlyphProps} from "./types"
 import type {Elements, Texture2D} from "regl"
 import type * as p from "core/properties"
+import type * as visuals from "core/visuals"
 import type {HatchPattern} from "core/property_mixins"
 import {resolve_line_dash} from "core/visuals/line"
 import {normalize_dash_pattern} from "./dash_cache"
 import {LINE_AA_WIDTH, LINE_MITER_LIMIT, line_bounds_padding} from "./base_line"
 import {split_rings, classify_rings, build_line_from_ring, generate_skirt_geometry, POLYGON_AA_WIDTH} from "core/util/polygon"
 import type {SkirtGeometry, RingLineData} from "core/util/polygon"
+import type {Arrayable} from "core/types"
 import earcut from "earcut"
 
 type GroupTopology = {
   ring_indices: number[]
+  ring_lengths: number[]
   tri_indices: number[]
 }
 
@@ -27,27 +30,27 @@ export class PatchGL extends BaseGLGlyph {
   _elements: Elements | null = null
 
   // Per-vertex visual buffers for polygon fill (divisor 0)
-  private _pv_fill_color = new NormalizedUint8Buffer(this.regl_wrapper, 4)
-  private _pv_hatch_patterns = new Uint8Buffer(this.regl_wrapper)
-  private _pv_hatch_scales = new Float32Buffer(this.regl_wrapper)
-  private _pv_hatch_weights = new Float32Buffer(this.regl_wrapper)
-  private _pv_hatch_rgba = new NormalizedUint8Buffer(this.regl_wrapper, 4)
+  private _pv_fill_color = this.own(new NormalizedUint8Buffer(this.regl_wrapper, 4))
+  private _pv_hatch_patterns = this.own(new Uint8Buffer(this.regl_wrapper))
+  private _pv_hatch_scales = this.own(new Float32Buffer(this.regl_wrapper))
+  private _pv_hatch_weights = this.own(new Float32Buffer(this.regl_wrapper))
+  private _pv_hatch_rgba = this.own(new NormalizedUint8Buffer(this.regl_wrapper, 4))
 
   // Source visual buffers (scalar, from _set_visuals)
-  private _fill_color = new NormalizedUint8Buffer(this.regl_wrapper, 4)
+  private _fill_color = this.own(new NormalizedUint8Buffer(this.regl_wrapper, 4))
   private _have_hatch: boolean = false
-  private readonly _hatch_patterns = new Uint8Buffer(this.regl_wrapper)
-  private readonly _hatch_scales = new Float32Buffer(this.regl_wrapper)
-  private readonly _hatch_weights = new Float32Buffer(this.regl_wrapper)
-  private readonly _hatch_rgba = new NormalizedUint8Buffer(this.regl_wrapper, 4)
+  private readonly _hatch_patterns = this.own(new Uint8Buffer(this.regl_wrapper))
+  private readonly _hatch_scales = this.own(new Float32Buffer(this.regl_wrapper))
+  private readonly _hatch_weights = this.own(new Float32Buffer(this.regl_wrapper))
+  private readonly _hatch_rgba = this.own(new NormalizedUint8Buffer(this.regl_wrapper, 4))
 
   // Stroke upload buffers (reuse line infrastructure)
   private _line_points_buf?: Float32Buffer
   private _line_show_buf?: Uint8Buffer
-  private readonly _linewidth = new Float32Buffer(this.regl_wrapper)
-  private readonly _line_color = new NormalizedUint8Buffer(this.regl_wrapper, 4)
-  private readonly _line_cap = new Uint8Buffer(this.regl_wrapper)
-  private readonly _line_join = new Uint8Buffer(this.regl_wrapper)
+  private readonly _linewidth = this.own(new Float32Buffer(this.regl_wrapper))
+  private readonly _line_color = this.own(new NormalizedUint8Buffer(this.regl_wrapper, 4))
+  private readonly _line_cap = this.own(new Uint8Buffer(this.regl_wrapper))
+  private readonly _line_join = this.own(new Uint8Buffer(this.regl_wrapper))
 
   // Dash state
   private _is_dashed = false
@@ -62,10 +65,20 @@ export class PatchGL extends BaseGLGlyph {
   _ring_data: RingLineData[] = []
 
   private _pv_dirty = true
+  private _layout_revision = 0
+  private _pv_layout_revision = -1
   private _topology?: GroupTopology[]
 
   constructor(regl_wrapper: ReglWrapper, override readonly glyph: PatchView) {
     super(regl_wrapper, glyph)
+  }
+
+  protected _screen_coordinates(): {sx: Arrayable<number>, sy: Arrayable<number>} {
+    return this.glyph
+  }
+
+  private _line_visuals(): visuals.LineScalar | undefined {
+    return (this.glyph.visuals as unknown as {line?: visuals.LineScalar}).line
   }
 
   draw(_indices: number[], main_glyph: GlyphView, transform: Transform): void {
@@ -97,6 +110,10 @@ export class PatchGL extends BaseGLGlyph {
       return
     }
 
+    if (this._pv_layout_revision != main_gl._layout_revision) {
+      this._pv_dirty = true
+    }
+
     // Expand visual buffers to per-vertex when visuals or data changed
     if (this._pv_dirty && main_gl._nvertices > 0) {
       const vertex_counts = [main_gl._nvertices]
@@ -108,6 +125,7 @@ export class PatchGL extends BaseGLGlyph {
         expand_to_per_vertex(this._hatch_rgba, this._pv_hatch_rgba, vertex_counts, 4)
       }
       this._pv_dirty = false
+      this._pv_layout_revision = main_gl._layout_revision
     }
 
     const {width, height} = transform
@@ -153,8 +171,8 @@ export class PatchGL extends BaseGLGlyph {
 
     // Stroke pass - draw each ring outline separately
     if (main_gl._ring_data.length > 0) {
-      const line_visuals = this.glyph.visuals.line
-      if (line_visuals.doit) {
+      const line_visuals = this._line_visuals()
+      if (line_visuals != null && line_visuals.doit) {
         for (const ring of main_gl._ring_data) {
           if (ring.nline < 2) {
             continue
@@ -171,14 +189,14 @@ export class PatchGL extends BaseGLGlyph {
 
           // Upload ring data
           if (this._line_points_buf == null) {
-            this._line_points_buf = new Float32Buffer(this.regl_wrapper)
+            this._line_points_buf = this.own(new Float32Buffer(this.regl_wrapper))
           }
           const pts = this._line_points_buf.get_sized_array(ring.points.length)
           pts.set(ring.points)
           this._line_points_buf.update()
 
           if (this._line_show_buf == null) {
-            this._line_show_buf = new Uint8Buffer(this.regl_wrapper)
+            this._line_show_buf = this.own(new Uint8Buffer(this.regl_wrapper))
           }
           const shw = this._line_show_buf.get_sized_array(ring.show.length)
           shw.set(ring.show)
@@ -186,7 +204,7 @@ export class PatchGL extends BaseGLGlyph {
 
           if (this._is_dashed) {
             if (this._length_so_far_buf == null) {
-              this._length_so_far_buf = new Float32Buffer(this.regl_wrapper)
+              this._length_so_far_buf = this.own(new Float32Buffer(this.regl_wrapper))
             }
             const lsf = this._length_so_far_buf.get_sized_array(ring.length_so_far.length)
             lsf.set(ring.length_so_far)
@@ -209,6 +227,7 @@ export class PatchGL extends BaseGLGlyph {
             framebuffer,
             point_offset: 0,
             line_offset: 0,
+            data_mapping: null,
           }
           if (this._is_dashed && this._dash_tex[0] != null) {
             const dashed_props: LineDashGlyphProps = {
@@ -236,12 +255,15 @@ export class PatchGL extends BaseGLGlyph {
   }
 
   _set_data(data_changed: boolean = true): void {
-    const {sx, sy} = this.glyph
+    const {sx, sy} = this._screen_coordinates()
     const rings = split_rings(sx, sy)
+    const previous_nvertices = this._nvertices
 
     if (rings.length > 0) {
-      const topology_invalid = this._topology == null || this._topology.some(({ring_indices}) =>
-        ring_indices.some((i) => i >= rings.length))
+      const topology_ring_count = this._topology?.reduce((total, {ring_indices}) => total + ring_indices.length, 0)
+      const topology_invalid = this._topology == null || topology_ring_count != rings.length ||
+        this._topology.some(({ring_indices, ring_lengths}) =>
+          ring_indices.some((i, r) => i >= rings.length || rings[i].length != ring_lengths[r]))
       const topology_changed = data_changed || topology_invalid
       if (topology_changed) {
         const groups = classify_rings(rings)
@@ -256,7 +278,8 @@ export class PatchGL extends BaseGLGlyph {
             offset += group_rings[r].length / 2
           }
           const tri_indices = earcut(flat_coords, hole_indices.length > 0 ? hole_indices : undefined, 2)
-          return {ring_indices, tri_indices}
+          const ring_lengths = group_rings.map((ring) => ring.length)
+          return {ring_indices, ring_lengths, tri_indices}
         })
       }
 
@@ -281,15 +304,18 @@ export class PatchGL extends BaseGLGlyph {
 
       this._triangle_count = total_ntriangles
       this._nvertices = total_nvertices
+      if (this._nvertices != previous_nvertices) {
+        this._layout_revision++
+      }
 
       // Merge all group geometries into single buffers
       if (this._positions == null) {
-        this._positions = new Float32Buffer(this.regl_wrapper, 2)
+        this._positions = this.own(new Float32Buffer(this.regl_wrapper, 2))
       }
       const pos_array = this._positions.get_sized_array(total_coords)
 
       if (this._edge_distance == null) {
-        this._edge_distance = new Float32Buffer(this.regl_wrapper)
+        this._edge_distance = this.own(new Float32Buffer(this.regl_wrapper))
       }
       const ed_array = this._edge_distance.get_sized_array(total_nvertices)
 
@@ -320,13 +346,12 @@ export class PatchGL extends BaseGLGlyph {
 
       // Element topology is data-space invariant, so retain it across mapping.
       if (elem_array != null) {
-        this._elements?.destroy()
-        this._elements = this.regl_wrapper.elements({
+        this._elements = this.replace(this._elements, this.regl_wrapper.elements({
           usage: "static",
           primitive: "triangles",
           data: elem_array,
           type: "uint32",
-        })
+        }))
       }
 
       // Build line data for all rings (outer boundary + holes + disjoint)
@@ -339,12 +364,14 @@ export class PatchGL extends BaseGLGlyph {
       }
     } else {
       if (data_changed) {
-        this._elements?.destroy()
-        this._elements = null
+        this._elements = this.release(this._elements)
         this._topology = []
       }
       this._triangle_count = 0
       this._nvertices = 0
+      if (previous_nvertices != 0) {
+        this._layout_revision++
+      }
       this._ring_data = []
     }
   }
@@ -353,44 +380,45 @@ export class PatchGL extends BaseGLGlyph {
     const fill_visuals = this.glyph.visuals.fill
     this._fill_color.set_from_color(fill_visuals.fill_color, fill_visuals.fill_alpha)
 
-    const line_visuals = this.glyph.visuals.line
-    this._line_color.set_from_color(line_visuals.line_color, line_visuals.line_alpha)
-    this._linewidth.set_from_prop(line_visuals.line_width)
-    this._line_cap.set_from_line_cap(line_visuals.line_cap)
-    this._line_join.set_from_line_join(line_visuals.line_join)
-
-    // Dash detection
-    const {line_dash} = line_visuals
-    const arr = normalize_dash_pattern(resolve_line_dash(line_dash.get(0)))
-    this._is_dashed = arr.length != 0
+    const line_visuals = this._line_visuals()
+    this._is_dashed = false
     this._dash_tex = []
+    if (line_visuals != null) {
+      this._line_color.set_from_color(line_visuals.line_color, line_visuals.line_alpha)
+      this._linewidth.set_from_prop(line_visuals.line_width)
+      this._line_cap.set_from_line_cap(line_visuals.line_cap)
+      this._line_join.set_from_line_join(line_visuals.line_join)
 
-    if (this._is_dashed) {
-      if (this._dash_offset == null) {
-        this._dash_offset = new Float32Buffer(this.regl_wrapper)
+      const {line_dash} = line_visuals
+      const arr = normalize_dash_pattern(resolve_line_dash(line_dash.get(0)))
+      this._is_dashed = arr.length != 0
+      if (this._is_dashed) {
+        if (this._dash_offset == null) {
+          this._dash_offset = this.own(new Float32Buffer(this.regl_wrapper))
+        }
+        this._dash_offset.set_from_prop(line_visuals.line_dash_offset)
+
+        if (this._dash_tex_info == null) {
+          this._dash_tex_info = this.own(new Float32Buffer(this.regl_wrapper, 4))
+        }
+        const dash_tex_info = this._dash_tex_info.get_sized_array(4)
+
+        if (this._dash_scale == null) {
+          this._dash_scale = this.own(new Float32Buffer(this.regl_wrapper))
+        }
+        const dash_scale = this._dash_scale.get_sized_array(1)
+
+        const [tex_info, tex, scale] = this.regl_wrapper.get_dash(arr)
+        this._dash_tex.push(tex)
+        for (let j = 0; j < 4; j++) {
+          dash_tex_info[j] = tex_info[j]
+        }
+        dash_scale[0] = scale
+
+        // Patch is always scalar (single glyph).
+        this._dash_tex_info.update(true)
+        this._dash_scale.update(true)
       }
-      this._dash_offset.set_from_prop(line_visuals.line_dash_offset)
-
-      if (this._dash_tex_info == null) {
-        this._dash_tex_info = new Float32Buffer(this.regl_wrapper, 4)
-      }
-      const dash_tex_info = this._dash_tex_info.get_sized_array(4)
-
-      if (this._dash_scale == null) {
-        this._dash_scale = new Float32Buffer(this.regl_wrapper)
-      }
-      const dash_scale = this._dash_scale.get_sized_array(1)
-
-      const [tex_info, tex, scale] = this.regl_wrapper.get_dash(arr)
-      this._dash_tex.push(tex)
-      for (let j = 0; j < 4; j++) {
-        dash_tex_info[j] = tex_info[j]
-      }
-      dash_scale[0] = scale
-
-      // Patch is always scalar (single glyph).
-      this._dash_tex_info.update(true)
-      this._dash_scale.update(true)
     }
 
     const hatch_visuals = this.glyph.visuals.hatch

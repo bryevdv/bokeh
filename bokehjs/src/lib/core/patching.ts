@@ -6,55 +6,71 @@ import {union} from "core/util/set"
 import type {Slice} from "core/util/slice"
 import * as typed_array from "core/util/typed_array"
 
+export type StreamRange = {
+  readonly start: number
+  readonly end: number
+}
+
+/**
+ * Describes how a columnar source changed after a streaming update.
+ *
+ * `new_rows` counts rows from the streamed data that remain after rollover,
+ * while `removed_rows` counts rows removed from the previous source data.
+ * Affected ranges use half-open indices in the resulting source.
+ */
+export type StreamDelta = {
+  readonly old_length: number
+  readonly new_length: number
+  readonly new_rows: number
+  readonly removed_rows: number
+  readonly affected_ranges: readonly StreamRange[]
+}
+
 // exported for testing
 export function stream_to_column(col: Arrayable, new_col: Arrayable, rollover?: number): Arrayable {
   if (isArray(col) && isArray(new_col)) {
-    const result = col.concat(new_col)
-
-    if (rollover != null && result.length > rollover) {
-      return result.slice(-rollover)
-    } else {
+    const total_len = col.length + new_col.length
+    if (rollover != null && total_len > rollover) {
+      const nnew = Math.min(new_col.length, rollover)
+      const nold = rollover - nnew
+      const result = nold == 0 ? [] : col.slice(-nold)
+      const offset = new_col.length - nnew
+      for (let i = offset; i < new_col.length; i++) {
+        result.push(new_col[i])
+      }
       return result
     }
+    return col.concat(new_col)
   }
 
   const total_len = col.length + new_col.length
 
   // handle rollover case for typed arrays
   if (rollover != null && total_len > rollover) {
-    const start = total_len - rollover
-    const end = col.length
-
-    // resize col if it is shorter than the rollover length
-    const result = (() => {
-      if (col.length < rollover) {
-        const ctor = (() => {
-          if (isTypedArray(col)) {
-            return col.constructor
-          } else if (isTypedArray(new_col)) {
-            return new_col.constructor
-          } else {
-            throw new Error("unsupported array types")
-          }
-        })()
-
-        const result = new ctor(rollover)
-        result.set(col, 0)
-        return result
+    const ctor = (() => {
+      if (isTypedArray(col)) {
+        return col.constructor
+      } else if (isTypedArray(new_col)) {
+        return new_col.constructor
       } else {
-        return col
+        throw new Error("unsupported array types")
       }
     })()
 
-    // shift values in original col to accommodate new_col
-    for (let i = start, endi = end; i < endi; i++) {
-      result[i-start] = result[i]
+    const result = isTypedArray(col) && col.length == rollover ? col : new ctor(rollover)
+    const nnew = Math.min(new_col.length, rollover)
+    const nold = rollover - nnew
+
+    if (nold != 0) {
+      if (result === col) {
+        result.copyWithin(0, col.length - nold)
+      } else {
+        result.set(col.slice(col.length - nold), 0)
+      }
     }
 
-    // update end values in col with new_col
-    for (let i = 0, endi = new_col.length; i < endi; i++) {
-      result[i+(end-start)] = new_col[i]
-    }
+    const offset = new_col.length - nnew
+    result.set(offset == 0 ? new_col : new_col.slice(offset), nold)
 
     return result
   } else {
@@ -152,12 +168,38 @@ export function patch_to_column<T>(col: NDArray | NDArray[], patch: Patch<T>[]):
   return patched
 }
 
-export function stream_to_columns(old_data: Data, new_data: Data, rollover?: number): void {
+function columnar_data_length(data: Data): number {
+  for (const [, column] of dict(data)) {
+    return column.length
+  }
+  return 0
+}
+
+export function stream_to_columns(old_data: Data, new_data: Data, rollover?: number): StreamDelta {
+  const old_length = columnar_data_length(old_data)
+  const streamed_length = columnar_data_length(new_data)
   const data = dict(old_data)
   for (const [name, new_column] of dict(new_data)) {
     const old_column = data.get(name) ?? []
     data.set(name, stream_to_column(old_column, new_column, rollover))
   }
+
+  const new_length = columnar_data_length(old_data)
+  const new_rows = Math.min(streamed_length, new_length)
+  const removed_rows = Math.max(0, old_length + new_rows - new_length)
+  const affected_ranges = (() => {
+    if (new_length == 0) {
+      return []
+    } else if (removed_rows != 0) {
+      return [{start: 0, end: new_length}]
+    } else if (new_rows != 0) {
+      return [{start: new_length - new_rows, end: new_length}]
+    } else {
+      return []
+    }
+  })()
+
+  return {old_length, new_length, new_rows, removed_rows, affected_ranges}
 }
 
 export function patch_to_columns(old_data: Data, patches: PatchSet<unknown>): Set<number> {

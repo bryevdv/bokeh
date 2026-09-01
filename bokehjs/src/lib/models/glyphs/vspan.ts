@@ -3,7 +3,7 @@ import {generic_line_vector_legend} from "./utils"
 import {Selection} from "../selections/selection"
 import {LineVector} from "core/property_mixins"
 import type {PointGeometry, SpanGeometry, RectGeometry} from "core/geometry"
-import type {Rect} from "core/types"
+import type {Arrayable, Rect} from "core/types"
 import type * as visuals from "core/visuals"
 import * as uniforms from "core/uniforms"
 import type {Context2d} from "core/util/canvas"
@@ -11,6 +11,8 @@ import type {SpatialIndex} from "core/util/spatial"
 import {map} from "core/util/arrayable"
 import {range} from "core/util/array"
 import * as p from "core/properties"
+import type {VSpanGL} from "./webgl/span"
+import type {ScreenLine} from "./curve"
 
 const {abs, max} = Math
 
@@ -21,6 +23,63 @@ export interface VSpanView extends VSpan.Data {}
 export class VSpanView extends GlyphView {
   declare model: VSpan
   declare visuals: VSpan.Visuals
+
+  /** @internal */
+  declare glglyph?: VSpanGL
+
+  override async load_glglyph() {
+    const {VSpanGL} = await import("./webgl/span")
+    return VSpanGL
+  }
+
+  get x0(): Arrayable<number> {
+    return this.x
+  }
+
+  get x1(): Arrayable<number> {
+    return this.x
+  }
+
+  get y0(): Arrayable<number> {
+    return new Float32Array(this.data_size)
+  }
+
+  get y1(): Arrayable<number> {
+    const y1 = new Float32Array(this.data_size)
+    y1.fill(1)
+    return y1
+  }
+
+  get sx0(): Arrayable<number> {
+    return this.sx
+  }
+
+  get sx1(): Arrayable<number> {
+    return this.sx
+  }
+
+  get sy0(): Arrayable<number> {
+    const {top} = this.renderer.plot_view.frame.bbox
+    const sy0 = new Float32Array(this.data_size)
+    sy0.fill(top)
+    return sy0
+  }
+
+  get sy1(): Arrayable<number> {
+    const {bottom} = this.renderer.plot_view.frame.bbox
+    const sy1 = new Float32Array(this.data_size)
+    sy1.fill(bottom)
+    return sy1
+  }
+
+  webgl_lines(): ScreenLine[] {
+    const {top, bottom} = this.renderer.plot_view.frame.bbox
+    const lines = new Array<ScreenLine>(this.data_size)
+    for (let i = 0; i < this.data_size; i++) {
+      lines[i] = {sx: Float32Array.of(this.sx[i], this.sx[i]), sy: Float32Array.of(top, bottom)}
+    }
+    return lines
+  }
 
   override after_visuals(): void {
     super.after_visuals()

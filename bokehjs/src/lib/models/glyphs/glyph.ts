@@ -1,4 +1,5 @@
 import type {HitTestResult} from "core/hittest"
+import type {StreamDelta} from "core/patching"
 import * as p from "core/properties"
 import * as bbox from "core/util/bbox"
 import * as visuals from "core/visuals"
@@ -59,14 +60,33 @@ export abstract class GlyphView extends DOMComponentView {
     return this.glglyph != null && this._can_use_webgl
   }
 
+  /** Disable WebGL after a runtime capability failure and repaint on Canvas. */
+  disable_webgl(): void {
+    if (this._can_use_webgl) {
+      this._runtime_webgl_disabled = true
+      this._can_use_webgl = false
+      this.request_paint()
+    }
+  }
+
   private _can_use_webgl: boolean = false
+  private _runtime_webgl_disabled: boolean = false
   protected _compute_can_use_webgl(): boolean {
     return true
+  }
+
+  private _refresh_webgl_capability(): void {
+    if (this.glglyph != null) {
+      this._runtime_webgl_disabled = false
+      this._can_use_webgl = this._compute_can_use_webgl()
+    }
   }
 
   private _index: SpatialIndex | null = null
 
   private _data_size: number | null = null
+  private _screen_data_mapped: boolean = false
+  private _stream_delta: StreamDelta | null = null
 
   protected _nohit_warned: Set<geometry.Geometry["type"]> = new Set()
 
@@ -93,6 +113,10 @@ export abstract class GlyphView extends DOMComponentView {
     }
   }
 
+  protected get stream_delta(): StreamDelta | null {
+    return this._stream_delta
+  }
+
   override initialize(): void {
     super.initialize()
     this.visuals = new visuals.Visuals(this)
@@ -115,6 +139,12 @@ export abstract class GlyphView extends DOMComponentView {
     }
   }
 
+  override remove(): void {
+    this.glglyph?.destroy()
+    this.glglyph = undefined
+    super.remove()
+  }
+
   request_paint(): void {
     this.parent.request_paint()
   }
@@ -126,9 +156,12 @@ export abstract class GlyphView extends DOMComponentView {
   paint(ctx: Context2d, indices: number[], data?: Partial<Glyph.Data>): void {
     if (this.has_webgl()) {
       this.glglyph.render(ctx, indices, this.base ?? this)
-    } else if (this.canvas.webgl != null && settings.force_webgl) {
+    } else if (this.canvas.webgl != null && settings.force_webgl && !this._runtime_webgl_disabled) {
       throw new Error(`${this} doesn't support webgl rendering`)
     } else {
+      // Preserve ordering inside composite renderers (e.g. WebGL graph edges
+      // followed by Canvas nodes), not just between top-level renderers.
+      this.canvas.blit_webgl(ctx)
       this._paint(ctx, indices, data)
     }
   }
@@ -239,6 +272,7 @@ export abstract class GlyphView extends DOMComponentView {
   protected _hit_poly?(geometry: geometry.PolyGeometry): Selection
 
   hit_test(geometry: geometry.Geometry): HitTestResult {
+    this.ensure_screen_data()
     const hit = (() => {
       switch (geometry.type) {
         case "point": return this._hit_point?.(geometry)
@@ -421,6 +455,7 @@ export abstract class GlyphView extends DOMComponentView {
       visual.update()
     }
 
+    this._refresh_webgl_capability()
     if (this.has_webgl()) {
       this.glglyph.set_visuals_changed()
     }
@@ -450,7 +485,14 @@ export abstract class GlyphView extends DOMComponentView {
           array[i] = range.v_synthetic(array[i] as Arrayable<number | Factor>)
         }
       } else if (prop instanceof p.CoordinateSeqSeqSeqSpec) {
-        // TODO
+        const nested = array as Arrayable<Arrayable<Arrayable<Arrayable<number | Factor>>>>
+        for (const multi_polygon of nested) {
+          for (const polygon of multi_polygon) {
+            for (let i = 0; i < polygon.length; i++) {
+              polygon[i] = range.v_synthetic(polygon[i])
+            }
+          }
+        }
       }
     }
 
@@ -468,10 +510,17 @@ export abstract class GlyphView extends DOMComponentView {
     return final_array
   }
 
-  async set_data(source: ColumnarDataSource, indices: Indices, indices_to_update?: number[]): Promise<void> {
+  async set_data(
+    source: ColumnarDataSource,
+    indices: Indices,
+    indices_to_update?: number[],
+    stream_delta: StreamDelta | null = null,
+  ): Promise<void> {
     const visuals = new Set(this._iter_visuals())
     const {base} = this
 
+    this._stream_delta = stream_delta
+    this._screen_data_mapped = false
     this._data_size = indices.count
 
     for (const prop of this.model) {
@@ -516,9 +565,7 @@ export abstract class GlyphView extends DOMComponentView {
       decoration.marking.set_data(source, indices)
     }
 
-    if (this.glglyph != null) {
-      this._can_use_webgl = this._compute_can_use_webgl()
-    }
+    this._refresh_webgl_capability()
 
     if (this.has_webgl()) {
       this.glglyph.set_data_changed()
@@ -527,6 +574,7 @@ export abstract class GlyphView extends DOMComponentView {
     if (base == null) {
       this.index_data()
     }
+    this._stream_delta = null
   }
 
   protected _set_data(_indices: number[] | null): void {}
@@ -549,6 +597,10 @@ export abstract class GlyphView extends DOMComponentView {
     const index = new SpatialIndex(this._index_size)
     this._index_data(index)
     index.finish()
+    this._set_index(index)
+  }
+
+  protected _set_index(index: SpatialIndex): void {
     this._index = index
   }
 
@@ -563,23 +615,41 @@ export abstract class GlyphView extends DOMComponentView {
 
   protected _mask_data?(): Indices
 
-  map_data(): void {
+  private _map_coordinates(force_cpu: boolean): void {
     const {x_scale, y_scale} = this.renderer.coordinates
     const {base} = this
+    // Resolve the mapping contract once per glyph view. Some implementations
+    // inspect renderer-wide visual state, and coordinate specs must all make a
+    // consistent decision within a paint.
+    const gpu_data_mapping = !force_cpu && this.has_webgl() ? this.glglyph.data_mapping : null
+    let deferred_screen_data = false
 
     const v_compute = <T>(prop: p.BaseCoordinateSpec<T>) => {
       const scale = prop.dimension == "x" ? x_scale : y_scale
-      const array = this[prop.attr as keyof this] as Arrayable<number> | RaggedArray
-      if (array instanceof RaggedArray) {
+      const array = this[prop.attr as keyof this] as Arrayable<number> | RaggedArray | number[][][][]
+      if (prop instanceof p.CoordinateSeqSeqSeqSpec) {
+        return Array.from(array as number[][][][], (multi_polygon) =>
+          Array.from(multi_polygon, (polygon) =>
+            Array.from(polygon, (ring) => scale.v_compute(ring))))
+      } else if (array instanceof RaggedArray) {
         return new RaggedArray(array.offsets, scale.v_compute(array.data))
       } else {
-        return scale.v_compute(array)
+        return scale.v_compute(array as Arrayable<number>)
       }
     }
 
     for (const prop of this.model) {
       if (prop instanceof p.BaseCoordinateSpec) {
+        const gpu_mapped = gpu_data_mapping != null && this.glglyph!.maps_coordinate(prop.attr)
+        if (gpu_mapped) {
+          deferred_screen_data = true
+          this._screen_data_mapped = false
+          continue
+        }
         if (base != null && this._is_inherited(prop)) {
+          if (force_cpu) {
+            base.ensure_screen_data()
+          }
           this._inherit_from(`s${prop.attr}`, base)
         } else {
           const array = v_compute(prop)
@@ -588,14 +658,28 @@ export abstract class GlyphView extends DOMComponentView {
       }
     }
 
-    this._map_data()
+    this._map_data(force_cpu)
+    if (!deferred_screen_data) {
+      this._screen_data_mapped = true
+    }
+  }
+
+  /** Materialize screen arrays only when a CPU consumer (hit testing, anchors) needs them. */
+  ensure_screen_data(): void {
+    if (!this._screen_data_mapped) {
+      this._map_coordinates(true)
+    }
+  }
+
+  map_data(): void {
+    this._map_coordinates(false)
     if (this.has_webgl()) {
       this.glglyph.set_data_mapped()
     }
   }
 
   // This is where specs not included in coords are computed, e.g. radius.
-  protected _map_data(): void {}
+  protected _map_data(_force_cpu: boolean = false): void {}
 
   override get bbox(): BBox | undefined {
     if (this.base == null) {

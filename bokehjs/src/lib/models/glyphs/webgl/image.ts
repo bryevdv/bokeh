@@ -57,6 +57,7 @@ export class ImageGL extends BaseGLGlyph {
         bounds: main_gl_glyph._bounds[i],
         tex: main_gl_glyph._tex[i],
         global_alpha: global_alpha.get(i),
+        angle: 0,
       }
       this.regl_wrapper.image()(props)
     }
@@ -70,8 +71,11 @@ export class ImageGL extends BaseGLGlyph {
     const {image} = this.glyph
     const nimage = image.length
 
-    if (this._bounds.length != nimage) {
-      this._bounds = Array(nimage).fill(null)
+    while (this._bounds.length > nimage) {
+      this.release(this._bounds.pop())
+    }
+    while (this._bounds.length < nimage) {
+      this._bounds.push(null)
     }
 
     for (let i = 0; i < nimage; i++) {
@@ -82,12 +86,12 @@ export class ImageGL extends BaseGLGlyph {
       const sh_i = sh[i]
 
       if (!isFinite(sx_i + sy_i + sw_i + sh_i)) {
-        this._bounds[i] = null
+        this._bounds[i] = this.release(this._bounds[i])
         continue
       }
 
       if (this._bounds[i] == null) {
-        this._bounds[i] = new Float32Buffer(this.regl_wrapper)
+        this._bounds[i] = this.own(new Float32Buffer(this.regl_wrapper))
       }
       const bounds_array = this._bounds[i]!.get_sized_array(4)
 
@@ -106,15 +110,18 @@ export class ImageGL extends BaseGLGlyph {
 
     assert(image_data != null)
 
-    if (this._tex.length != nimage) {
-      this._tex = Array(nimage).fill(null)
+    while (this._tex.length > nimage) {
+      this.release(this._tex.pop())
+    }
+    while (this._tex.length < nimage) {
+      this._tex.push(null)
     }
 
     for (let i = 0; i < nimage; i++) {
       const image_data_i = image_data[i]
 
       if (image_data_i == null) {
-        this._tex[i] = null
+        this._tex[i] = this.release(this._tex[i])
         continue
       }
 
@@ -127,10 +134,18 @@ export class ImageGL extends BaseGLGlyph {
       }
 
       if (this._tex[i] == null) {
-        this._tex[i] = this.regl_wrapper.texture(tex_options)
+        this._tex[i] = this.own(this.regl_wrapper.texture(tex_options))
       } else {
-        this._tex[i]!(tex_options) // Reuse existing WebGL texture
+        const texture = this._tex[i]!
+        this.regl_wrapper.flush_resource(texture)
+        texture(tex_options) // Reuse existing WebGL texture
       }
     }
+  }
+
+  override destroy(): void {
+    super.destroy()
+    this._tex = []
+    this._bounds = []
   }
 }

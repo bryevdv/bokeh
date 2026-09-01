@@ -27,7 +27,7 @@ import {clone, Cloner} from "./util/cloneable"
 import * as kinds from "./kinds"
 import type {Scalar, Vector} from "./vectorization"
 import {isExpr} from "./vectorization"
-import type {PatchSet} from "./patching"
+import type {PatchSet, StreamDelta} from "./patching"
 import {stream_to_columns, patch_to_columns} from "./patching"
 
 type AttrsLike = Dict<unknown>
@@ -239,7 +239,7 @@ export abstract class HasProps extends Signalable() implements Equatable, Printa
   readonly change          = new Signal0<this>(this, "change")
   readonly transformchange = new Signal0<this>(this, "transformchange")
   readonly exprchange      = new Signal0<this>(this, "exprchange")
-  readonly streaming       = new Signal0<this>(this, "streaming")
+  readonly streaming       = new Signal<StreamDelta, this>(this, "streaming")
   readonly patching        = new Signal<number[], this>(this, "patching")
 
   readonly properties: {[key: string]: Property} = {}
@@ -681,10 +681,10 @@ export abstract class HasProps extends Signalable() implements Equatable, Printa
 
   stream_to(prop: Property<Data>, new_data: Data, rollover?: number, {sync}: {sync?: boolean} = {}): void {
     const data = prop.get_value()
-    stream_to_columns(data, new_data, rollover)
+    const delta = stream_to_columns(data, new_data, rollover)
     this._clear_watchers()
     prop.set_value(data)
-    this.streaming.emit()
+    this.streaming.emit(delta)
     if (this.document != null) {
       const event = new ColumnsStreamedEvent(this.document, this, prop.attr, new_data, rollover)
       event.sync = sync ?? true

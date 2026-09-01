@@ -12,7 +12,7 @@ import {map} from "core/util/arrayable"
 import * as iter from "core/util/iterator"
 import {range} from "core/util/array"
 import * as p from "core/properties"
-import type {LRTBGL} from "./webgl/lrtb"
+import type {HStripGL} from "./webgl/strip"
 
 const UNUSED = 0
 
@@ -23,16 +23,29 @@ export class HStripView extends GlyphView {
   declare visuals: HStrip.Visuals
 
   /** @internal */
-  declare glglyph?: LRTBGL
+  declare glglyph?: HStripGL
 
-  override async lazy_initialize(): Promise<void> {
-    await super.lazy_initialize()
+  override async load_glglyph() {
+    const {HStripGL} = await import("./webgl/strip")
+    return HStripGL
+  }
 
-    const {webgl} = this.renderer.plot_view.canvas_view
-    if (webgl != null && webgl.regl_wrapper.has_webgl) {
-      const {LRTBGL} = await import("./webgl/lrtb")
-      this.glglyph = new LRTBGL(webgl.regl_wrapper, this)
-    }
+  get left(): Arrayable<number> {
+    return new Float32Array(this.data_size)
+  }
+
+  get right(): Arrayable<number> {
+    const right = new Float32Array(this.data_size)
+    right.fill(1)
+    return right
+  }
+
+  get top(): Arrayable<number> {
+    return this.y0
+  }
+
+  get bottom(): Arrayable<number> {
+    return this.y1
   }
 
   get sleft(): Arrayable<number> {

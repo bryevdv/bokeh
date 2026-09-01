@@ -28,6 +28,7 @@ import {FactorRange} from "../ranges/factor_range"
 import {Decoration} from "../graphics/decoration"
 import type {Marking} from "../graphics/marking"
 import type {OpaqueIndices, MultiIndices, ImageIndex} from "../selections/selection"
+import type {StreamDelta} from "core/patching"
 
 type Defaults = {
   fill: {fill_alpha?: number, fill_color?: Color}
@@ -183,7 +184,7 @@ export class GlyphRendererView extends DataRendererView {
     this.connect(this.decimated_glyph.model.change, update)
 
     this.connect(this.model.data_source.change, update)
-    this.connect(this.model.data_source.streaming, update)
+    this.connect(this.model.data_source.streaming, (delta) => this.update_data(undefined, delta))
     this.connect(this.model.data_source.patching, (indices) => this.update_data(indices))
     this.connect(this.model.data_source.selected.change, render)
     this.connect(this.model.data_source._select, render)
@@ -238,25 +239,39 @@ export class GlyphRendererView extends DataRendererView {
     return masked
   }
 
-  async update_data(indices?: number[]): Promise<void> {
-    await this.set_data(indices)
+  private _set_streaming(delta: StreamDelta | null): void {
+    for (const glyph of [
+      this.glyph, this.decimated_glyph, this.selection_glyph,
+      this.nonselection_glyph, this.hover_glyph, this.muted_glyph,
+    ]) {
+      if (delta == null) {
+        glyph?.glglyph?.clear_streaming()
+      } else {
+        glyph?.glglyph?.set_streaming(delta)
+      }
+    }
+  }
+
+  async update_data(indices?: number[], stream_delta: StreamDelta | null = null): Promise<void> {
+    this._set_streaming(stream_delta)
+    await this.set_data(indices, stream_delta)
     this.request_paint()
   }
 
   // in case of partial updates like patching, the list of indices that actually
   // changed may be passed as the "indices" parameter to afford any optional optimizations
-  async set_data(indices?: number[]): Promise<void> {
+  async set_data(indices?: number[], stream_delta: StreamDelta | null = null): Promise<void> {
     const source = this.model.data_source
 
     this.all_indices = this.model.view.indices
     const {all_indices} = this
 
-    await this.glyph.set_data(source, all_indices, indices)
-    await this.decimated_glyph.set_data(source, all_indices, indices)
-    await this.selection_glyph.set_data(source, all_indices, indices)
-    await this.nonselection_glyph.set_data(source, all_indices, indices)
-    await this.hover_glyph?.set_data(source, all_indices, indices)
-    await this.muted_glyph.set_data(source, all_indices, indices)
+    await this.glyph.set_data(source, all_indices, indices, stream_delta)
+    await this.decimated_glyph.set_data(source, all_indices, indices, stream_delta)
+    await this.selection_glyph.set_data(source, all_indices, indices, stream_delta)
+    await this.nonselection_glyph.set_data(source, all_indices, indices, stream_delta)
+    await this.hover_glyph?.set_data(source, all_indices, indices, stream_delta)
+    await this.muted_glyph.set_data(source, all_indices, indices, stream_delta)
 
     await this.set_visuals()
 
@@ -316,6 +331,15 @@ export class GlyphRendererView extends DataRendererView {
 
   override get has_webgl(): boolean {
     return this.glyph.has_webgl()
+  }
+
+  override restore_webgl(): void {
+    for (const glyph of [
+      this.glyph, this.selection_glyph, this.nonselection_glyph,
+      this.hover_glyph, this.muted_glyph, this.decimated_glyph,
+    ]) {
+      glyph?.glglyph?.context_restored()
+    }
   }
 
   protected _paint(ctx: Context2d): void {
