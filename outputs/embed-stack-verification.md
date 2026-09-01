@@ -1,6 +1,44 @@
 # EMBED replacement stack verification
 
-This report is completed as branches and replacement tasks evolve. It supplements the verification protocol in `outputs/embed-stack-context.md`. The historical rows preserve the earlier replay tips; the final rows record the EMBED 06–08 handoff after the global view-index cleanup. A commit cannot record its own final SHA, so the EMBED 08 tip is reported in the handoff.
+This report is completed as branches and replacement tasks evolve. It supplements the verification protocol in `outputs/embed-stack-context.md`. The 2026-09-01 recovered-stack section is current. Later sections preserve the earlier replay and publication evidence as historical context. A parent commit cannot stably record the final SHAs of its own descendants, so the coordinator handoff and live PR readback remain authoritative for the final rewritten tips.
+
+## 2026-09-01 recovered-stack rebase
+
+The recovered EMBED 00–08 stack is being replayed sequentially onto the fetched
+`bryevdv/branch-4.0` tip
+`76cdca4f973e1bc1e0e18c3491afb9e8524d8e55`. The source stack was clean, its
+adjacent ancestry was exact, and every local source tip matched its fork remote
+tracking ref before the replay. Immutable source refs live under
+`refs/codex/embed-stack-pre-rebase-20260901/`:
+
+| Layer | Source tip | Recovered task | Worktree |
+|---|---|---|---|
+| EMBED 00 | `37a00df2422caec273fe6d31ef279c5d1655a857` | `01a05f16-6155-76d1-ba26-87a7a0deb308` | `/Users/bryan/work/trees/36a5/bokeh-embed` |
+| EMBED 01 | `cd0f54573c78c51f78ae8698f787ff8de1c1855f` | `01a05f16-69d3-7600-abc2-265c576d0fc5` | `/Users/bryan/work/trees/60ba/bokeh-embed` |
+| EMBED 02 | `3d94c5a34eb1f964b0bdb475539a1ba31b7ead62` | `01a05f16-72d0-7031-bbb2-40114ac8cf21` | `/Users/bryan/work/trees/77d5/bokeh-embed` |
+| EMBED 03 | `890181aa712d737269748efa5f6667e64dd0e0a0` | `01a05f16-7a79-7cd3-b96c-9125b141456d` | `/Users/bryan/work/trees/2ece/bokeh-embed` |
+| EMBED 04 | `28736cabafd90201b115d27fc34ecb5e4c7bc1c2` | `01a05f16-8a7c-7f81-8b70-89e1627c3121` | `/Users/bryan/work/trees/6c53/bokeh-embed` |
+| EMBED 05 | `167e75b03e4111ee5f74a1e51e1f262671698531` | `01a05f16-8209-7b23-b25d-c8c255cdc31e` | `/Users/bryan/work/trees/c488/bokeh-embed` |
+| EMBED 06 | `9117e083f53cea7ba488c671ffc9cda1794f5709` | `01a05f16-9154-7991-84cd-a89dec22093a` | `/Users/bryan/work/trees/166b/bokeh-embed` |
+| EMBED 07 | `ccdb06b46463a3603e0e66abcb4313cab76ed6b5` | `01a05f16-97ea-74e1-880c-c9080e002238` | `/Users/bryan/work/trees/90af/bokeh-embed` |
+| EMBED 08 | `14283682994f881f39de8c0f30723eeef4252a5a` | `01a05f16-a0f0-7c01-9470-af5c8c686193` | `/Users/bryan/work/trees/502b/bokeh-embed` |
+
+Open draft demonstration PRs map to EMBED 01–06 as
+[#2](https://github.com/bryevdv/bokeh/pull/2) through
+[#7](https://github.com/bryevdv/bokeh/pull/7), and EMBED 07 is
+[#10](https://github.com/bryevdv/bokeh/pull/10). EMBED 00 and EMBED 08 are
+supporting stack branches without open PRs.
+
+The current repository workflow is the committed `pixi.toml`/`pixi.lock`
+environment. Each fresh recovered worktree runs `pixi run --locked setup`
+after it inherits those files from the new base and before project tests or
+builds. The replay must preserve each layer's reviewable commit range, pass a
+range-diff and `git diff --check`, preserve exact adjacent ancestry, audit all
+outgoing full commit messages for an exact `checkpoint`, and publish the nine
+branches atomically to `github.com/bryevdv/bokeh` with exact remote leases.
+Final rewritten branch and PR tips, test evidence, and remote readback belong in
+the coordinator handoff because recording descendant SHAs here would change
+their parent and invalidate those same SHAs.
 
 ## Source baselines
 
