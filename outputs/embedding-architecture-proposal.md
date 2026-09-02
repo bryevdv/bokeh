@@ -202,7 +202,7 @@ flowchart LR
 - theme and standalone callback policy;
 - server request/session options where applicable;
 - title behavior and metadata;
-- serialization options such as buffer placement or compression.
+- serialization policy (`static` or `protocol`) and future compression settings.
 
 It must not contain generated DOM IDs or already-rendered HTML.
 
@@ -256,7 +256,7 @@ The exact spelling can change, but these rules should not:
 - `source.kind` is explicit. The browser no longer guesses standalone versus server from `docid` versus `token` fields.
 - roots have stable artifact-local keys. A target element is supplied at mount time and is not part of a reusable data payload by default.
 - dependency requirements are location-independent. CDN/server/inline URL resolution happens when rendering or mounting.
-- buffers and future compression have an explicit representation rather than being hidden inside a particular HTML template.
+- standalone binary data is serialized inline; separate binary buffers remain a protocol-message concern and are not part of `bokeh.embed/v1`. Compression would require a future schema extension.
 - unknown optional fields are ignored according to documented schema rules; unsupported schema majors fail before partial rendering.
 
 An artifact may internally contain more than one document to preserve existing `file_html()` and mixed-document behavior, but most public constructors should produce one document. The schema should make multiple documents explicit rather than recreate random `docid` indirection for the common case.
@@ -591,7 +591,7 @@ Create a versioned fixture corpus consumed by both Python and TypeScript:
 - one root, multiple roots, named roots, multiple documents;
 - anonymous, shared, and cyclic model graphs;
 - custom models and external resources;
-- binary arrays/buffers and every supported placement/encoding;
+- binary arrays encoded inline in static artifacts, deferred buffers in protocol messages, and rejection of an artifact-level `buffers` field;
 - themes, JS callbacks, document configuration, and empty/invalid documents;
 - server-new-session and server-existing-session sources;
 - strings containing `</script>`, `<`, `&`, quotes, Unicode separators, and other HTML/JSON boundary cases;
@@ -925,7 +925,7 @@ Standalone and docs artifacts can be exact immediately. Server apps need either 
 
 ### Compression and external buffers
 
-Issue [#9788](https://github.com/bokeh/bokeh/issues/9788) shows demand for compressed embedded data. The v1 artifact should reserve an explicit buffer table and content encoding, but compression can be a follow-up once the uncompressed contract is stable. Browser support, CSP, caching, and notebook portability need separate benchmarks.
+Issue [#9788](https://github.com/bokeh/bokeh/issues/9788) shows demand for compressed embedded data. The v1 artifact intentionally has no external buffer table: the standalone compiler forces inline serialization, while server, patch, and notebook transports retain efficient out-of-band buffers through protocol messages. Artifact-level external buffers can be reconsidered in a future schema only if every host can actually mount them. Browser support, CSP, caching, and notebook portability need separate benchmarks.
 
 ### Template compatibility
 
@@ -949,7 +949,7 @@ The redesign is ready to become the default when all of the following are true:
 
 - Every use case in the inventory has a documented new mapping and a runnable migration test.
 - Retained public APIs delegate to the shared compiler without known semantic regressions; removed APIs have tested migration routes and actionable diagnostics where practical.
-- Python and BokehJS share versioned artifact fixtures, including minimal IDs, cycles, key reordering, custom extensions, and buffers.
+- Python and BokehJS share versioned artifact fixtures, including minimal IDs, cycles, key reordering, custom extensions, inline binary arrays, and explicit rejection of artifact-level buffers.
 - A core embed followed by a widget embed works in every load ordering and cache state.
 - `mount()` has caller-visible readiness, structured errors, selective roots, and idempotent disposal for standalone and server sources.
 - no supported consumer depends on `Bokeh.index`, `Bokeh.documents`, or a

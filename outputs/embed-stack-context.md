@@ -83,7 +83,7 @@ The EMBED 03 minimal-ID focused suite passes 129/129 with this command and sourc
 The three implementation efforts are one program, not three independent API designs.
 
 1. `mount()` and `BokehMount` are the browser lifecycle foundation. Framework adapters and notebook hosts consume them; they do not invent parallel render/disposal paths.
-2. `EmbedArtifact` is the portable, versioned representation of embedding intent. It separates source, logical roots, dependency requirements, metadata, and buffers from DOM placement and resource location.
+2. `EmbedArtifact` is the portable, versioned representation of embedding intent. It separates source, logical roots, dependency requirements, and metadata from DOM placement and resource location. Static binary data is inline; live binary buffers remain owned by protocol messages.
 3. Logical root keys cross the Python/JavaScript boundary. Targets are supplied at mount time as caller-owned elements, selectors, or a root-key mapping. Random DOM IDs and `RenderItem` positional root arrays are compatibility details.
 4. Minimal IDs are the static serialization policy, not a universal protocol change. Static pages, fragments, JSON artifacts, external artifacts, and docs use graph-minimal IDs. Server sessions, patches, comms, and live notebook transports retain every ID required by their protocol boundaries.
 5. Resource requirements are emitted by the artifact compiler; resource policy resolves CDN, inline, server, relative, absolute, or host-owned delivery. Hosts may implement a resolver, but resource loading and deduplication have one promise-based contract.
@@ -269,7 +269,7 @@ Own the cross-language artifact schema, root addressing, resource requirement/po
 Acceptance:
 
 - all current use cases and API overlaps have an explicit 3.x-to-4.0 mapping, including removal/error behavior where no facade is retained;
-- schema fixtures cover static, multi-root, multi-document if retained, server-source, resources, buffers, and version/error cases;
+- schema fixtures cover static, multi-root, multi-document if retained, server-source, resources, explicit rejection of artifact-level buffers, and version/error cases;
 - ownership, readiness, disposal, target replacement, and error propagation are normative;
 - each later task records decisions that affect another layer back into this contract.
 

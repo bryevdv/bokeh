@@ -17,7 +17,7 @@ Consequences include duplicate schemas, order-sensitive resource loading, weak l
 
 The initiative establishes four shared layers:
 
-1. A Python `EmbedSpec` compiler produces an immutable, versioned `EmbedArtifact` describing standalone or server source, logical roots, resource requirements, metadata, and buffers.
+1. A Python `EmbedSpec` compiler produces an immutable, versioned `EmbedArtifact` describing standalone or server source, logical roots, resource requirements, and metadata. Static binary data is serialized inline; live binary payloads remain protocol-message buffers.
 2. Output renderers turn that artifact into a page, typed fragment, JSON, external payload reference, or notebook MIME bundle without changing its meaning.
 3. BokehJS `mount()` accepts models/documents or artifacts, caller-owned keyed targets, and a resource resolver, and returns a `BokehMount` with readiness, errors, root access, session ownership, and idempotent disposal.
 4. A promise-based resource loader deduplicates exact requirements and separates required components from CDN/inline/server/relative/host-owned policy.
