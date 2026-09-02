@@ -7,7 +7,9 @@
 from __future__ import annotations
 
 # Standard library imports
+import json
 from dataclasses import dataclass
+from pathlib import Path
 
 __all__ = ("NPM_PACKAGES", "NpmPackage")
 
@@ -18,16 +20,16 @@ class NpmPackage:
     workspace: str
     tarball: str
 
-# Dependency order is also publication order.
-NPM_PACKAGES = (
-    NpmPackage("@bokeh/bokehjs", "", "bokeh-bokehjs"),
-    NpmPackage("@bokeh/framework", "frameworks/base", "bokeh-framework"),
-    NpmPackage("@bokeh/angular", "frameworks/angular", "bokeh-angular"),
-    NpmPackage("@bokeh/react", "frameworks/react", "bokeh-react"),
-    NpmPackage("@bokeh/svelte", "frameworks/svelte", "bokeh-svelte"),
-    NpmPackage("@bokeh/vue", "frameworks/vue", "bokeh-vue"),
-    NpmPackage("@bokeh/web-component", "frameworks/web-component", "bokeh-web-component"),
-)
+_MANIFEST = Path(__file__).parents[2] / "bokehjs" / "npm_packages.json"
+
+
+def _packages() -> tuple[NpmPackage, ...]:
+    # Manifest order is dependency, packing, and publication order.
+    values = json.loads(_MANIFEST.read_text(encoding="utf-8"))
+    return tuple(NpmPackage(value["name"], value["workspace"], value["tarball"]) for value in values)
+
+
+NPM_PACKAGES = _packages()
 
 
 if __name__ == "__main__":

@@ -118,6 +118,15 @@ async function validate_controller(model: ReturnType<typeof Plotting.figure>): P
   controller.dispose()
   assert(explicitly_disposed == 1, "explicit controller disposal wasn't reported exactly once")
 
+  const preaborted_signal = new AbortController()
+  preaborted_signal.abort()
+  const preaborted = await controller.start(model, abort_target, {
+    mountOptions: {signal: preaborted_signal.signal},
+  })
+  assert(preaborted == null, "a pre-aborted request created a mount")
+  assert(active_mount() == null, "a pre-aborted request remained publicly active")
+  assert(model.document == null, "a pre-aborted request retained temporary document ownership")
+
   const external_abort = new AbortController()
   let disposed = 0
   const aborted = await controller.start(model, abort_target, {
@@ -160,6 +169,16 @@ async function validate_document_controller(): Promise<void> {
   first.line({field: "x"}, {field: "first"}, {source})
   const second = Plotting.figure({width: 180, height: 120, x_range, tools: [], toolbar_location: null})
   second.line({field: "x"}, {field: "second"}, {source})
+  const duplicate = Plotting.figure({width: 180, height: 120, tools: [], toolbar_location: null})
+  Object.defineProperty(duplicate, "id", {value: first.id})
+  const duplicate_controller = new DocumentMountController()
+  let duplicate_rejected = false
+  try {
+    duplicate_controller.update([first, duplicate])
+  } catch {
+    duplicate_rejected = true
+  }
+  assert(duplicate_rejected, "document controller accepted distinct roots with duplicate model IDs")
   const first_target = document.createElement("div")
   const second_target = document.createElement("div")
   const unrelated_content = document.createElement("p")
@@ -205,7 +224,8 @@ async function validate_document_controller(): Promise<void> {
     "changing a document mount option didn't transfer roots to the replacement document")
 
   detach_first()
-  await Promise.resolve()
+  await wait_until(() => child_count(first_target) == 0,
+    "detaching one document slot retained its Bokeh DOM")
   assert(!mounted.disposed, "detaching one document slot disposed the shared mount")
   assert(child_count(first_target) == 0, "detaching one document slot retained its Bokeh DOM")
   assert(child_count(second_target) > 0, "detaching one document slot removed a sibling root")
@@ -219,9 +239,26 @@ async function validate_document_controller(): Promise<void> {
   assert(child_count(first_target) > 0 && child_count(second_target) > 0,
     "reattaching a document slot disturbed sibling framework content")
 
+  let replacement_error: unknown = null
+  const failed_target = document.createElement("div")
   reattach_first()
+  const detach_failed_target = controller.attach(first, failed_target)
+  controller.update([first, second], {
+    mountOptions: {use_for_title: false},
+    onError: (error) => replacement_error = error,
+  })
+  await wait_until(() => replacement_error != null, "failed target replacement wasn't reported")
+  assert(child_count(first_target) > 0, "failed target replacement detached the working target")
+  document.body.append(failed_target)
+  controller.update([first, second], {mountOptions: {use_for_title: false}})
+  await wait_until(() => child_count(failed_target) > 0, "target replacement wasn't retried after failure")
+  assert(child_count(first_target) == 0, "successful target replacement retained the previous DOM")
+  assert(controller.mounted == mounted, "target replacement recreated the shared mount")
+
+  detach_failed_target()
   detach_second()
-  await Promise.resolve()
+  await wait_until(() => child_count(first_target) == 0 && child_count(second_target) == 0,
+    "selective document detachment retained Bokeh DOM")
   assert(!mounted.disposed, "detaching every document slot disposed the provider-owned mount")
   assert(child_count(first_target) == 0 && child_count(second_target) == 0,
     "selective document detachment retained Bokeh DOM")
@@ -232,6 +269,7 @@ async function validate_document_controller(): Promise<void> {
   assert([first, second, source].every((model) => model.document == null),
     "document provider disposal retained temporary document ownership")
   first_target.remove()
+  failed_target.remove()
   unrelated_content.remove()
   second_target.remove()
 }
