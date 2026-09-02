@@ -19,6 +19,7 @@ export type FrameworkTestResult = {
 export type AdapterMount = {
   handle: BokehMount
   target: HTMLElement
+  updateMountOptions?(mountOptions: MountOptions): Promise<BokehMount>
   unmount(): void | Promise<void>
 }
 
@@ -35,6 +36,7 @@ export type FrameworkRenderRequest = {
 
 export type FrameworkRender = (request: FrameworkRenderRequest) => {
   target(): HTMLElement | null
+  update?(request: FrameworkRenderRequest): void
   unmount(): void | Promise<void>
 }
 
@@ -174,7 +176,7 @@ async function validate_document_controller(): Promise<void> {
   controller.update([first, second], {onMounted: resolve_mounted, onError: reject_mounted})
   const detach_first = controller.attach(first, first_target)
   const detach_second = controller.attach(second, second_target)
-  const mounted = await mounting
+  let mounted = await mounting
 
   assert(mounted.views.length == 2, "document controller didn't build both root views")
   assert(child_count(first_target) > 0 && child_count(second_target) > 0,
@@ -183,6 +185,24 @@ async function validate_document_controller(): Promise<void> {
   assert(first.document == mounted.document && second.document == mounted.document && source.document == mounted.document,
     "distributed roots didn't retain one shared document")
   assert(index.get(first) != null && index.get(second) != null, "distributed roots weren't globally indexed")
+
+  let resolve_remounted!: (mounted: BokehMount) => void
+  let reject_remounted!: (error: unknown) => void
+  const remounting = new Promise<BokehMount>((resolve, reject) => {
+    resolve_remounted = resolve
+    reject_remounted = reject
+  })
+  controller.update([first, second], {
+    mountOptions: {use_for_title: false},
+    onMounted: resolve_remounted,
+    onError: reject_remounted,
+  })
+  const previous_mount = mounted
+  mounted = await remounting
+  assert(previous_mount.disposed, "changing a document mount option didn't dispose the previous mount")
+  assert(mounted != previous_mount, "changing a document mount option reused the previous mount")
+  assert(first.document == mounted.document && second.document == mounted.document,
+    "changing a document mount option didn't transfer roots to the replacement document")
 
   detach_first()
   await Promise.resolve()
@@ -245,6 +265,24 @@ async function validate_multi_root_mount(adapter: Adapter): Promise<void> {
     "multi-root unmount retained temporary document ownership")
 }
 
+async function validate_mount_options_update(framework: string, adapter: Adapter,
+    model: ReturnType<typeof Plotting.figure>): Promise<void> {
+  const mounted = await adapter.mount(model, {use_for_title: false})
+  if (mounted.updateMountOptions == null) {
+    await mounted.unmount()
+    assert(framework != "react" && framework != "vue", `${framework} test adapter can't update mountOptions`)
+    return
+  }
+
+  const replacement = await mounted.updateMountOptions({use_for_title: true})
+  assert(mounted.handle.disposed, `${framework} retained its previous mount after mountOptions changed`)
+  assert(replacement != mounted.handle, `${framework} reused its previous mount after mountOptions changed`)
+  assert(!replacement.disposed && model.document == replacement.document,
+    `${framework} didn't publish the replacement mount after mountOptions changed`)
+  await mounted.unmount()
+  assert(replacement.disposed, `${framework} unmount didn't dispose the replacement mount`)
+}
+
 export async function run_framework_test(framework: string, adapter: Adapter): Promise<FrameworkTestResult> {
   validate_registration()
   const {plot, source} = create_plot()
@@ -278,6 +316,7 @@ export async function run_framework_test(framework: string, adapter: Adapter): P
   await validate_controller(plot)
   await validate_document_controller()
   await validate_multi_root_mount(adapter)
+  await validate_mount_options_update(framework, adapter, plot)
 
   return {framework, mounts: 4, streams}
 }
@@ -295,7 +334,17 @@ export function install_framework_test(framework: string, render: FrameworkRende
       const handle = await mounting
       const target = rendered.target()
       assert(target != null, "framework render didn't create a Bokeh target")
-      return {handle, target, unmount: rendered.unmount}
+      const updateMountOptions = rendered.update == null ? undefined : (mountOptions: MountOptions) => {
+        let onMounted!: (mounted: BokehMount) => void
+        let onError!: (error: unknown) => void
+        const remounting = new Promise<BokehMount>((resolve, reject) => {
+          onMounted = resolve
+          onError = reject
+        })
+        rendered.update?.({model, mountOptions, onMounted, onError})
+        return remounting
+      }
+      return {handle, target, updateMountOptions, unmount: rendered.unmount}
     },
   })
 }

@@ -6,15 +6,29 @@
 # -----------------------------------------------------------------------------
 from __future__ import annotations
 
-__all__ = ("NPM_PACKAGES",)
+# Standard library imports
+from dataclasses import dataclass
+
+__all__ = ("NPM_PACKAGES", "NpmPackage")
+
+
+@dataclass(frozen=True)
+class NpmPackage:
+    name: str
+    workspace: str
+    tarball: str
 
 # Dependency order is also publication order.
 NPM_PACKAGES = (
-    ("", "bokeh-bokehjs"),
-    ("frameworks/base", "bokeh-framework"),
-    ("frameworks/angular", "bokeh-angular"),
-    ("frameworks/react", "bokeh-react"),
-    ("frameworks/svelte", "bokeh-svelte"),
-    ("frameworks/vue", "bokeh-vue"),
-    ("frameworks/web-component", "bokeh-web-component"),
+    NpmPackage("@bokeh/bokehjs", "", "bokeh-bokehjs"),
+    NpmPackage("@bokeh/framework", "frameworks/base", "bokeh-framework"),
+    NpmPackage("@bokeh/angular", "frameworks/angular", "bokeh-angular"),
+    NpmPackage("@bokeh/react", "frameworks/react", "bokeh-react"),
+    NpmPackage("@bokeh/svelte", "frameworks/svelte", "bokeh-svelte"),
+    NpmPackage("@bokeh/vue", "frameworks/vue", "bokeh-vue"),
+    NpmPackage("@bokeh/web-component", "frameworks/web-component", "bokeh-web-component"),
 )
+
+
+if __name__ == "__main__":
+    print("\n".join(package.tarball for package in NPM_PACKAGES))
