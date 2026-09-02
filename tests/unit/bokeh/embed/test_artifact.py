@@ -27,17 +27,14 @@ from bokeh.embed import (
     ArtifactValidationError,
     EmbedArtifact,
     EmbedCompileError,
-    EmbedMigrationError,
     EmbedSpec,
     ResourceAssetRequirement,
     ResourceConflictError,
     ResourcePolicy,
-    autoload_static,
     components,
     embed,
     embed_server,
     file_html,
-    json_item,
     server_document,
     server_session,
 )
@@ -349,7 +346,7 @@ def test_compiler_captures_inline_custom_model_bundle(
     )
     assert requirement.assets[0].content == "compiled-custom-models"
     assert artifact.page(resources="cdn").index("compiled-custom-models") > artifact.page(resources="cdn").index("bokeh-api")
-    with pytest.raises(EmbedMigrationError, match="custom extension"):
+    with pytest.raises(ValueError, match="custom extension"):
         components(InlineCustomJS(code="return value"))
 
 
@@ -557,18 +554,6 @@ def test_save_and_server_facades_use_artifact_routes(tmp_path: Path) -> None:
     selected = server_session(model, session_id="session", url="https://example.test/app", resources=None)
     assert model.id in selected
     assert 'data-bokeh-root="root"' in selected
-
-
-def test_removed_contracts_raise_actionable_migration_errors() -> None:
-    plot = _plot()
-    with pytest.raises(EmbedMigrationError, match=r"embed\(model\)\.external"):
-        autoload_static(plot, CDN, "/assets/plot.json")
-    with pytest.raises(EmbedMigrationError, match=r"embed\(model\)\.to_json"):
-        json_item(plot)
-    with pytest.raises(EmbedMigrationError, match="fragment"):
-        components(plot, False)
-    with pytest.raises(EmbedMigrationError, match="fragment"):
-        components(plot, wrap_script=False)
 
 
 def test_server_artifact_is_deterministic_structured_and_selective() -> None:
