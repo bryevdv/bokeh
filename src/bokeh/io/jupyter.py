@@ -37,16 +37,23 @@ __all__ = (
     "ARTIFACT_MIME_TYPE",
     "DISPLAY_MIME_TYPE",
     "FILE_MIME_TYPE",
+    "NOTEBOOK_COMM_TARGET",
     "notebook_info",
     "PROTOCOL_VERSION",
+    "RESOURCE_COMM_TARGET",
     "RESOURCES_MIME_TYPE",
 )
 
-PROTOCOL_VERSION = 2
-ARTIFACT_MIME_TYPE = EMBED_ARTIFACT_MIME_TYPE
-DISPLAY_MIME_TYPE = "application/vnd.bokeh.display+json"
-FILE_MIME_TYPE = "application/vnd.bokeh.file+json"
-RESOURCES_MIME_TYPE = "application/vnd.bokeh.resources+json"
+_PROTOCOL = json.loads((Path(__file__).parents[1] / "jupyter" / "protocol.json").read_text())
+PROTOCOL_VERSION = _PROTOCOL["version"]
+ARTIFACT_MIME_TYPE = _PROTOCOL["mime_types"]["artifact"]
+DISPLAY_MIME_TYPE = _PROTOCOL["mime_types"]["display"]
+FILE_MIME_TYPE = _PROTOCOL["mime_types"]["file"]
+RESOURCES_MIME_TYPE = _PROTOCOL["mime_types"]["resources"]
+NOTEBOOK_COMM_TARGET = _PROTOCOL["comm_targets"]["notebook"]
+RESOURCE_COMM_TARGET = _PROTOCOL["comm_targets"]["resources"]
+
+assert ARTIFACT_MIME_TYPE == EMBED_ARTIFACT_MIME_TYPE
 
 _NOTEBOOK_INFO_LABELS = {
     "python_version": "Python version",
@@ -282,7 +289,7 @@ def resource_payload(resolved: ResolvedResources, load_timeout: int, *,
     selected = resolved.assets if assets is None else assets
     artifacts = [_artifact(resource) for resource in selected]
     descriptor = {
-        "bokeh_version": _bokehjs_version(resolved.policy.version),
+        "bokeh_version": _bokehjs_version(resolved.bokeh_version),
         "policy": resolved.policy.to_dict(),
         "requirements": resolved.requirements.to_dict(),
         "dependencies": dependencies or [],
@@ -294,7 +301,7 @@ def resource_payload(resolved: ResolvedResources, load_timeout: int, *,
         kind="resources",
         resource_id=f"bokeh-{digest}",
         mode=resolved.policy.mode,
-        bokeh_version=_bokehjs_version(resolved.policy.version),
+        bokeh_version=_bokehjs_version(resolved.bokeh_version),
         python_version=__version__,
         requirements=resolved.requirements.to_dict(),
         policy=resolved.policy.to_dict(),

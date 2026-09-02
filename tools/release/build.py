@@ -59,17 +59,13 @@ def build_bokehjs(config: Config, system: System) -> ActionReturn:
 
 
 def build_jupyter(config: Config, system: System) -> ActionReturn:
-    system.pushd("src/bokeh/jupyter/frontend")
     try:
-        system.run("npm ci --no-progress")
-        system.run("npm run build")
+        system.run("bash tools/ci/build_jupyter.sh")
         config.add_modified("src/bokeh/jupyter/anywidget.js")
         config.add_modified("src/bokeh/jupyter/labextension")
         return PASSED("Jupyter frontend build succeeded")
     except RuntimeError as e:
         return FAILED("Jupyter frontend build did NOT succeed", details=e.args)
-    finally:
-        system.popd()
 
 
 def build_npm_packages(config: Config, system: System) -> ActionReturn:

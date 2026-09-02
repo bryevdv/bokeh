@@ -1,17 +1,20 @@
-export const MAX_PENDING_PATCHES = 64
-export const MAX_PENDING_BYTES = 8 * 1024 * 1024
+import {MAX_PENDING_BYTES, MAX_PENDING_PATCHES} from "./protocol"
+export {MAX_PENDING_BYTES, MAX_PENDING_PATCHES} from "./protocol"
 
 export type RevisionItem = {message: any, buffers: DataView[]}
 export type QueueResult = "queued" | "ignored" | "overflow"
+export type RevisionConsumer = (message: any, buffers: DataView[]) => void | Promise<void>
 
 type PendingPatch = RevisionItem & {bytes: number}
 
-/** A bounded pre-subscriber queue for revisioned notebook transports. */
+/** A bounded queue and serial consumer pump for revisioned notebook transports. */
 export class RevisionQueue {
   private snapshot?: RevisionItem
   private patches: PendingPatch[] = []
   private bytes = 0
   private awaitingSnapshot = false
+  private consumer?: RevisionConsumer
+  private pumping = false
 
   get awaitingResync(): boolean {
     return this.awaitingSnapshot
@@ -22,7 +25,10 @@ export class RevisionQueue {
     const bytes = buffers.reduce((total, view) => total + view.byteLength, new TextEncoder().encode(JSON.stringify(message)).byteLength)
     this.patches.push({message, buffers, bytes})
     this.bytes += bytes
-    if (this.patches.length <= MAX_PENDING_PATCHES && this.bytes <= MAX_PENDING_BYTES) return "queued"
+    if (this.patches.length <= MAX_PENDING_PATCHES && this.bytes <= MAX_PENDING_BYTES) {
+      this.startPump()
+      return "queued"
+    }
     this.patches = []
     this.bytes = 0
     this.awaitingSnapshot = true
@@ -38,14 +44,25 @@ export class RevisionQueue {
   replaceWithSnapshot(message: any, buffers: DataView[] = []): void {
     this.reset(message.revision)
     this.snapshot = {message, buffers}
+    this.startPump()
   }
 
-  drain(callback: (message: any, buffers: DataView[]) => void): void {
-    if (this.snapshot != null) callback(this.snapshot.message, this.snapshot.buffers)
+  subscribe(callback: RevisionConsumer): void {
+    this.consumer = callback
+    this.startPump()
+  }
+
+  unsubscribe(callback: RevisionConsumer): void {
+    if (this.consumer === callback) this.consumer = undefined
+  }
+
+  requestResync(): boolean {
+    if (this.awaitingSnapshot) return false
     this.snapshot = undefined
-    for (const patch of this.patches) callback(patch.message, patch.buffers)
     this.patches = []
     this.bytes = 0
+    this.awaitingSnapshot = true
+    return true
   }
 
   clear(): void {
@@ -53,5 +70,32 @@ export class RevisionQueue {
     this.patches = []
     this.bytes = 0
     this.awaitingSnapshot = false
+    this.consumer = undefined
+  }
+
+  private startPump(): void {
+    if (this.pumping || this.consumer == null) return
+    this.pumping = true
+    void this.pump()
+  }
+
+  private async pump(): Promise<void> {
+    try {
+      while (this.consumer != null) {
+        let item = this.snapshot
+        if (item != null) {
+          this.snapshot = undefined
+        } else {
+          const patch = this.patches.shift()
+          if (patch == null) break
+          this.bytes -= patch.bytes
+          item = patch
+        }
+        await this.consumer(item.message, item.buffers)
+      }
+    } finally {
+      this.pumping = false
+      if (this.consumer != null && (this.snapshot != null || this.patches.length != 0)) this.startPump()
+    }
   }
 }

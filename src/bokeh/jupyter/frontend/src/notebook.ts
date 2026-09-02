@@ -13,11 +13,19 @@ import {FrontendDocumentSnapshot, loadResources, resetResourceRegistry} from "./
 export class NotebookExtension implements DocumentRegistry.IWidgetExtension<NotebookPanel, INotebookModel> {
   constructor(private readonly contents: Contents.IManager) {}
   private readonly managers = new Set<ContextManager>()
+  private readonly viewOwners = new Map<string, number>()
   snapshots(path: string): FrontendDocumentSnapshot[] {
+    const snapshots = new Map<string, FrontendDocumentSnapshot>()
     for (const manager of this.managers) {
-      if (!manager.isDisposed && manager.path === path) return manager.snapshots()
+      if (manager.isDisposed || manager.path !== path) continue
+      for (const snapshot of manager.snapshots()) {
+        const existing = snapshots.get(snapshot.view_id)
+        if (existing == null || (existing.error != null && snapshot.error == null)) {
+          snapshots.set(snapshot.view_id, snapshot)
+        }
+      }
     }
-    return []
+    return [...snapshots.values()]
   }
   createNew(panel: NotebookPanel, context: DocumentRegistry.IContext<INotebookModel>): IDisposable {
     const manager = new ContextManager(context, this.contents)
@@ -52,8 +60,18 @@ export class NotebookExtension implements DocumentRegistry.IWidgetExtension<Note
         }
       }
       const proxy = kernelProxy(manager)
+      for (const viewId of current) {
+        if (!ownedViews.has(viewId)) this.viewOwners.set(viewId, (this.viewOwners.get(viewId) ?? 0) + 1)
+      }
       for (const viewId of ownedViews) {
-        if (!current.has(viewId)) void proxy.releaseView?.(viewId)
+        if (current.has(viewId)) continue
+        const owners = (this.viewOwners.get(viewId) ?? 1) - 1
+        if (owners === 0) {
+          this.viewOwners.delete(viewId)
+          void proxy.releaseView?.(viewId)
+        } else {
+          this.viewOwners.set(viewId, owners)
+        }
       }
       ownedViews = current
       manager.setOwnedViews(current)
@@ -111,7 +129,7 @@ export class NotebookExtension implements DocumentRegistry.IWidgetExtension<Note
     context.model.cells.changed.connect(cellsChanged)
     for (const cell of context.model.cells) watch(cell)
     scanOwnership()
-    const kernelChanged = () => resetResourceRegistry()
+    const kernelChanged = () => resetResourceRegistry(manager)
     context.sessionContext.kernelChanged.connect(kernelChanged)
     return new DisposableDelegate(() => {
       context.sessionContext.kernelChanged.disconnect(kernelChanged)
@@ -120,9 +138,19 @@ export class NotebookExtension implements DocumentRegistry.IWidgetExtension<Note
       panel.content.rendermime.removeMimeType(FILE_MIME_TYPE)
       panel.content.rendermime.removeMimeType(RESOURCES_MIME_TYPE)
       panel.content.rendermime.removeMimeType(DISPLAY_MIME_TYPE)
+      const previous = ownedViews
+      ownedViews = new Set()
+      manager.setOwnedViews(ownedViews)
       const proxy = kernelProxy(manager)
-      for (const viewId of ownedViews) void proxy.releaseView?.(viewId)
-      ownedViews.clear()
+      for (const viewId of previous) {
+        const owners = (this.viewOwners.get(viewId) ?? 1) - 1
+        if (owners === 0) {
+          this.viewOwners.delete(viewId)
+          void proxy.releaseView?.(viewId)
+        } else {
+          this.viewOwners.set(viewId, owners)
+        }
+      }
       this.managers.delete(manager)
       manager.dispose()
     })

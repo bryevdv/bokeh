@@ -60,7 +60,7 @@ describe("AnyWidget transport", () => {
     }
 
     expect(sent.filter((message: any) => message.kind === "resync")).toHaveLength(1)
-    receive?.({kind: "snapshot", revision: 100, artifact: "{}"})
+    receive?.({kind: "snapshot", revision: 100, artifact: "{}", resource_id: "resource"})
     for (let revision = 101; revision <= 101 + MAX_PENDING_PATCHES; revision++) {
       receive?.({kind: "patch", revision, content: {events: []}})
     }

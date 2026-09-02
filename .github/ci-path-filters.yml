@@ -37,23 +37,10 @@ jupyter:
   - 'pixi.toml'
   - 'pixi.lock'
   - 'tools/release/**'
-  - 'src/bokeh/application/handlers/notebook.py'
-  - 'src/bokeh/core/_templates/**'
-  - 'src/bokeh/core/serialization.py'
-  - 'src/bokeh/document/**'
-  - 'src/bokeh/embed/**'
-  - 'src/bokeh/io/**'
-  - 'src/bokeh/jupyter/**'
-  - 'src/bokeh/protocol/**'
-  - 'src/bokeh/resources.py'
-  - 'examples/output/jupyter/**'
-  - 'examples/output/marimo/**'
-  - 'examples/server/api/notebook_embed.ipynb'
-  - 'tests/integration/test_jupyter_extension.py'
-  - 'tests/integration/test_marimo.py'
-  - 'tests/unit/bokeh/document/**'
-  - 'tests/unit/bokeh/embed/**'
-  - 'tests/unit/bokeh/io/**'
+  - 'src/**'
+  - 'examples/output/**'
+  - 'examples/server/api/**'
+  - 'tests/**'
 
 minimal_deps:
   - 'src/**'
@@ -68,6 +55,7 @@ documentation:
 
 bokehjs:
   - 'bokehjs/**'
+  - 'src/bokeh/jupyter/frontend/**'
 
 full:
   - '**'

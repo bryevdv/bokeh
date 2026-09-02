@@ -22,7 +22,8 @@ from bokeh.io.notebook import (
     show_hosted_app,
 )
 from bokeh.io.state import State
-from bokeh.models import ColumnDataSource, Div
+from bokeh.layouts import column
+from bokeh.models import ColumnDataSource, Div, Slider
 from bokeh.plotting import figure
 from bokeh.resources import Resources
 
@@ -190,6 +191,7 @@ class TestDocumentViewHandle:
         snapshot = comm.send.call_args.args[0]
         assert snapshot["kind"] == "snapshot"
         assert snapshot["revision"] == 0
+        assert snapshot["resource_id"].startswith("bokeh-")
         artifact = json.loads(snapshot["artifact"])
         assert artifact["schema"] == "bokeh.embed/v1"
         assert artifact["metadata"]["compiler"]["model_ids"] == "protocol-full"
@@ -234,8 +236,45 @@ class TestDocumentViewHandle:
         snapshot = comm.send.call_args.args[0]
         assert snapshot["kind"] == "snapshot"
         assert snapshot["revision"] == 1
+        assert snapshot["resource_id"].startswith("bokeh-")
         assert "after" in snapshot["artifact"]
         handle.close()
+
+    def test_resync_negotiates_resources_added_by_live_models(self) -> None:
+        plot = figure()
+        layout = column(plot)
+        document = Document()
+        document.add_root(layout)
+        comm = MagicMock(comm_id="comm")
+        handle = DocumentViewHandle(layout, live_id="live", view_id="view")
+        handle._attach(document)
+        handle._connect(comm)
+        initial = comm.send.call_args.args[0]
+
+        layout.children = [plot, Slider(start=0, end=1, value=0)]
+        comm.reset_mock()
+        handle._receive("comm", {"content": {"data": {"kind": "resync"}}})
+
+        updated = comm.send.call_args.args[0]
+        artifact = json.loads(updated["artifact"])
+        assert "bokeh/widgets" in artifact["requires"]["components"]
+        assert updated["resource_id"] != initial["resource_id"]
+        handle.close()
+
+    def test_broadcast_serializes_binary_buffers_once_for_all_frontends(self) -> None:
+        root = Div()
+        handle = DocumentViewHandle(root, live_id="live", view_id="view")
+        first = MagicMock()
+        second = MagicMock()
+        handle._comms = {"first": first, "second": second}
+        buffer = MagicMock(id="buffer", to_bytes=MagicMock(return_value=b"binary"))
+        message = MagicMock(content={"events": []}, buffers=[buffer])
+
+        with patch("bokeh.protocol.patch_doc", return_value=message):
+            handle._broadcast([MagicMock()])
+
+        buffer.to_bytes.assert_called_once_with()
+        assert first.send.call_args.kwargs["buffers"] is second.send.call_args.kwargs["buffers"]
 
     def test_one_comm_close_does_not_destroy_other_views(self) -> None:
         plot = figure()

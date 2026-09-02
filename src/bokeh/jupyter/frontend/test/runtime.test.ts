@@ -168,6 +168,7 @@ describe("artifact runtime", () => {
     const cleanup = await renderDisplay(node, liveDisplay, html, {
       openLive: async () => ({
         artifactJson: JSON.stringify(artifact),
+        resourceId: "resource",
         revision: 0,
         onMessage(callback) {receive = callback},
         onClose() {},
@@ -176,7 +177,7 @@ describe("artifact runtime", () => {
       }),
     })
 
-    receive?.({kind: "snapshot", artifact: JSON.stringify(artifact), revision: 3}, [])
+    receive?.({kind: "snapshot", artifact: JSON.stringify(artifact), resource_id: "resource", revision: 3}, [])
     await vi.waitFor(() => {
       expect(mount).toHaveBeenCalledTimes(2)
       expect(disposals[0]).toHaveBeenCalledOnce()
@@ -184,6 +185,78 @@ describe("artifact runtime", () => {
     expect(resync).not.toHaveBeenCalled()
     cleanup()
     expect(disposals[1]).toHaveBeenCalledOnce()
+  })
+
+  it("loads resources introduced by a live replacement snapshot", async () => {
+    const handle = {
+      ready: Promise.resolve(),
+      dispose: vi.fn(async () => undefined),
+      document: {to_json: () => ({roots: []}), roots: () => []},
+      root_keys: [],
+      root: () => null,
+      view_lookup: {},
+    }
+    ;(window as any).Bokeh = {
+      version: "4.0.0",
+      mount: vi.fn(() => handle),
+      when_mounted: vi.fn(async () => handle),
+      embed: {create_notebook_patch_receiver: vi.fn(() => vi.fn())},
+    }
+    const dynamic = {...resource, resource_id: "dynamic"}
+    const requestResource = vi.fn(async () => ({payload: dynamic, javascript: ""}))
+    const node = document.createElement("div")
+    document.body.append(node)
+    await loadResources(resource, "", node)
+    let receive: ((message: unknown, buffers: DataView[]) => void) | undefined
+
+    const cleanup = await renderDisplay(node, {...display, live_id: "live"}, html, {
+      requestResource,
+      openLive: async () => ({
+        artifactJson: JSON.stringify(artifact),
+        resourceId: "resource",
+        revision: 0,
+        onMessage(callback) {receive = callback},
+        onClose() {},
+        requestResync() {},
+        close() {},
+      }),
+    })
+
+    expect(requestResource).not.toHaveBeenCalled()
+    receive?.({kind: "snapshot", artifact: JSON.stringify(artifact), resource_id: "dynamic", revision: 1}, [])
+    await vi.waitFor(() => {
+      expect(requestResource).toHaveBeenCalledWith("dynamic")
+      expect((window as any).Bokeh.mount).toHaveBeenCalledTimes(2)
+    })
+    cleanup()
+  })
+
+  it("applies the declared CSP nonce to the executable resource wrapper", async () => {
+    ;(window as any).Bokeh = {version: "4.0.0"}
+    const append = vi.spyOn(document.head, "append").mockImplementation((...nodes: (Node | string)[]) => {
+      const script = nodes[0] as HTMLScriptElement
+      expect(script.nonce).toBe("notebook-nonce")
+      queueMicrotask(() => window.dispatchEvent(new CustomEvent("bokeh:resources-complete", {
+        detail: {resource_id: "nonced"},
+      })))
+    })
+    const nonced = {...resource, resource_id: "nonced", policy: {mode: "inline", nonce: "notebook-nonce"}}
+
+    try {
+      await loadResources(nonced, "void 0", document.createElement("div"))
+      expect(append).toHaveBeenCalledOnce()
+    } finally {
+      append.mockRestore()
+    }
+  })
+
+  it("retains page-global loaded resources when one notebook kernel changes", async () => {
+    ;(window as any).Bokeh = {version: "4.0.0"}
+    const node = document.createElement("div")
+    await loadResources(resource, "", node)
+
+    resetResourceRegistry({notebook: "changed"})
+    await expect(loadResources(resource, "", node)).resolves.toBeUndefined()
   })
 
   it("keeps the last mounted artifact visible and labels a closed live connection", async () => {
@@ -208,6 +281,7 @@ describe("artifact runtime", () => {
     const cleanup = await renderDisplay(node, {...display, live_id: "live"}, html, {
       openLive: async () => ({
         artifactJson: JSON.stringify(artifact),
+        resourceId: "resource",
         revision: 0,
         onMessage() {},
         onClose(callback) {closed = callback},

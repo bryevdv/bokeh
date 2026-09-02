@@ -41,7 +41,7 @@ def test_conda_recipe_dependencies_match_project_dependencies() -> None:
     ("func", "command", "environment"),
     [
         (build.build_bokehjs, "node make build", {}),
-        (build.build_jupyter, "npm run build", {}),
+        (build.build_jupyter, "bash tools/ci/build_jupyter.sh", {}),
         (build.build_npm_packages, "npm pack --workspace frameworks/web-component", {}),
         (
             build.build_conda_package,
@@ -98,7 +98,7 @@ def test_command_build_steps(
     ("func", "command"),
     [
         (build.build_bokehjs, "node make build"),
-        (build.build_jupyter, "npm run build"),
+        (build.build_jupyter, "bash tools/ci/build_jupyter.sh"),
         (build.build_npm_packages, "npm pack --workspace frameworks/web-component"),
         (
             build.build_conda_package,
@@ -126,14 +126,12 @@ def test_command_build_steps_report_failure(config: Config, func: StepType, comm
 
     assert result.kind is ActionResult.FAIL
     assert result.details == ("command failed",)
-    if func is build.build_jupyter:
-        assert system.directories[-1] == ("popd", None)
 
 
 def test_directory_build_steps_use_expected_working_directories(config: Config) -> None:
     cases = [
         (build.build_bokehjs, [("cd", "bokehjs"), ("cd", "..")]),
-        (build.build_jupyter, [("pushd", "src/bokeh/jupyter/frontend"), ("popd", None)]),
+        (build.build_jupyter, []),
         (build.build_npm_packages, [("cd", "bokehjs"), ("cd", "..")]),
         (build.build_docs, [("cd", "docs/bokeh"), ("cd", "../..")]),
         (build.npm_install, [("cd", "bokehjs"), ("cd", "..")]),
@@ -151,7 +149,7 @@ def test_jupyter_build_reinstalls_and_tracks_generated_outputs(config: Config) -
     result = build.build_jupyter(config, system)
 
     assert result.kind is ActionResult.PASS
-    assert system.commands == ["npm ci --no-progress", "npm run build"]
+    assert system.commands == ["bash tools/ci/build_jupyter.sh"]
     assert config.modified == {
         "src/bokeh/jupyter/anywidget.js",
         "src/bokeh/jupyter/labextension",

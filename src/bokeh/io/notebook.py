@@ -38,8 +38,10 @@ from typing import (
 
 # Bokeh imports
 from ..util.serialization import make_id
+from .jupyter import NOTEBOOK_COMM_TARGET, RESOURCE_COMM_TARGET
 
 if TYPE_CHECKING:
+    from ..core.types import ID
     from ..document.document import Document
     from ..document.events import (
         ColumnDataChangedEvent,
@@ -124,7 +126,7 @@ def _is_marimo_runtime() -> bool:
     if "marimo" not in sys.modules:
         return False
     try:
-        from marimo._runtime.context import runtime_context_installed
+        from marimo._runtime.context import runtime_context_installed  # pyright: ignore[reportMissingImports]
 
         return runtime_context_installed()
     except Exception:
@@ -163,11 +165,13 @@ class DocumentViewHandle:
 
     _MAX_HELD_EVENTS = 256
 
-    def __init__(self, root: Model, *, live_id: str, view_id: str) -> None:
+    def __init__(self, root: Model, *, live_id: str, view_id: str,
+            resources: ResourcePolicy | Resources | None = None) -> None:
         self._comms: dict[str, Comm] = {}
         self._root = root
         self._live_id = live_id
         self._view_id = view_id
+        self._resources = resources
         self._hold_depth = 0
         self._held_source_events: list[DocumentPatchedEvent] = []
         self._revision = 0
@@ -217,10 +221,12 @@ class DocumentViewHandle:
         from ..embed.notebook import notebook_content
 
         artifact, _ = notebook_content(self._root, live=True)
+        resource_id = _ensure_notebook_resources(artifact, self._resources, publish=False)
         comm.send({
             "kind": "snapshot",
             "revision": self._revision,
             "artifact": artifact.to_json_string(),
+            "resource_id": resource_id,
         })
 
     def _disconnect(self, comm_id: str) -> None:
@@ -326,13 +332,13 @@ class DocumentViewHandle:
         self._broadcast(events)
 
     @staticmethod
-    def _send(comm: Comm, message: Any, revision: int) -> None:
+    def _send(comm: Comm, content: Any, buffer_ids: Sequence[ID], buffers: list[bytes], revision: int) -> None:
         comm.send({
             "kind": "patch",
             "revision": revision,
-            "content": message.content,
-            "buffer_ids": [buffer.id for buffer in message.buffers],
-        }, buffers=[buffer.to_bytes() for buffer in message.buffers])
+            "content": content,
+            "buffer_ids": buffer_ids,
+        }, buffers=buffers)
 
     def _broadcast(self, events: list[DocumentPatchedEvent]) -> None:
         if self._closed:
@@ -341,10 +347,12 @@ class DocumentViewHandle:
             return
         from ..protocol import patch_doc
         message = patch_doc(events)
+        buffer_ids = [buffer.id for buffer in message.buffers]
+        buffers = [buffer.to_bytes() for buffer in message.buffers]
         self._revision += 1
         for comm_id, comm in tuple(self._comms.items()):
             try:
-                self._send(comm, message, self._revision)
+                self._send(comm, message.content, buffer_ids, buffers, self._revision)
             except Exception:
                 log.warning("A connected notebook frontend disconnected while applying an update")
                 self._disconnect(comm_id)
@@ -434,7 +442,7 @@ _APPLICATION_VIEW_HANDLES: dict[str, ApplicationViewHandle] = {}
 _OUTPUT_DOCUMENT_ROOTS: dict[tuple[int, int], tuple[Document, Model, int]] = {}
 _MAX_RETAINED_VIEW_HANDLES = 128
 _NOTEBOOK_COMM_KERNEL: Any | None = None
-_NOTEBOOK_COMM_TARGET = "bokeh.notebook.v1"
+_NOTEBOOK_COMM_TARGET = NOTEBOOK_COMM_TARGET
 
 
 def _claim_output_root(document: Document, root: Model) -> tuple[int, int]:
@@ -567,7 +575,7 @@ def notebook_mimebundle(obj: Model, *, include: set[str] | None = None,
         from ..settings import settings
 
         policy = ResourcePolicy.build(resources or Resources(mode=settings.resources()))
-        resolved = policy.resolve(artifact.requires)
+        resolved = policy.resolve(artifact.requires, bokeh_version=artifact.bokeh_version)
         fragment = artifact.fragment(resources=policy)
         resource_id = f"bokeh-{resolved.fingerprint[:16]}"
     else:
@@ -650,7 +658,7 @@ def show_doc(obj: Model | Sequence[UIElement], state: State,
     html = fragment.html.replace("</div>", f"{fallback}</div>", 1)
     payload = display_payload(artifact, resource_id, view_id, live_id=live_id)
 
-    handle = DocumentViewHandle(obj, live_id=live_id, view_id=view_id)
+    handle = DocumentViewHandle(obj, live_id=live_id, view_id=view_id, resources=resources)
     root_key = (id(state.document), id(obj))
     handle._attach(state.document, output_root=added_root or root_key in _OUTPUT_DOCUMENT_ROOTS)
     _retain_document_handle(handle)
@@ -745,7 +753,7 @@ _PUBLISHED_RESOURCE_IDS: set[str] = set()
 _RESOURCE_RECORDS: dict[str, dict[str, Any]] = {}
 _ARTIFACT_OWNERS: dict[str, str] = {}
 _RESOURCE_COMM_KERNEL: Any | None = None
-_RESOURCE_COMM_TARGET = "bokeh.resources.v1"
+_RESOURCE_COMM_TARGET = RESOURCE_COMM_TARGET
 
 def _static_fallback(message: str, *, title: str = "Interactive Bokeh output unavailable") -> str:
     return (
@@ -842,7 +850,7 @@ def _ensure_notebook_resources(artifact: EmbedArtifact, resources: ResourcePolic
 
     selected = resources or Resources(mode=settings.resources())
     policy = ResourcePolicy.build(selected)
-    resolved = policy.resolve(artifact.requires)
+    resolved = policy.resolve(artifact.requires, bokeh_version=artifact.bokeh_version)
     return _publish_resource_record(resolved, load_timeout, publish=publish)
 
 def _reset_notebook_resources() -> None:
