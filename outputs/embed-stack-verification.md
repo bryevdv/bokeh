@@ -246,8 +246,8 @@ idempotent disposal.
 
 The shared fixture at
 `bokehjs/test/unit/embed/artifact_fixtures.json` is read directly by Python and
-BokehJS tests. It covers keyed standalone roots without forced IDs, explicit
-buffers/metadata, server source fields and selected roots, resource manifests,
+BokehJS tests. It covers keyed standalone roots without forced IDs, metadata,
+server source fields and selected roots, resource manifests,
 and versioned envelopes with Python-compatible expected fingerprints. Focused
 tests add malformed schema/fingerprint cases, allocation-independent
 fingerprints, CSP/offline policy conflicts, additive concurrent loading, server

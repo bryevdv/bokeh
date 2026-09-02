@@ -48,7 +48,6 @@ export type EmbedArtifact = {
   roots: ArtifactRoot[]
   requires: ResourceRequirements
   metadata: {[key: string]: unknown}
-  buffers: {[key: string]: unknown}[]
   fingerprint: string
 }
 
@@ -117,6 +116,11 @@ export function validate_embed_artifact(value: unknown): EmbedArtifact {
     )
   }
   const source = as_record(artifact.source, "artifact.source")
+  if ("buffers" in artifact) {
+    throw new ArtifactError(
+      "schema", "artifact buffers are not part of bokeh.embed/v1; binary server data uses protocol message buffers",
+    )
+  }
   if (source.kind != "standalone" && source.kind != "server") {
     throw new ArtifactError("schema", "artifact.source.kind must be 'standalone' or 'server'")
   }
@@ -182,12 +186,17 @@ export function validate_embed_artifact(value: unknown): EmbedArtifact {
       if ((typeof resource.url == "string") == (typeof resource.content == "string")) {
         throw new ArtifactError("schema", "artifact extension resources need exactly one of 'url' or 'content'")
       }
+      for (const field of ["integrity", "crossorigin"] as const) {
+        if (resource[field] != null && typeof resource[field] != "string") {
+          throw new ArtifactError("schema", `artifact extension resource ${field} must be a string`)
+        }
+      }
+      if (resource.module != null && typeof resource.module != "boolean") {
+        throw new ArtifactError("schema", "artifact extension resource module must be a boolean")
+      }
     }
   }
   as_record(artifact.metadata, "artifact.metadata")
-  if (!Array.isArray(artifact.buffers) || artifact.buffers.some((buffer) => !isPlainObject(buffer))) {
-    throw new ArtifactError("schema", "artifact.buffers must be an array")
-  }
   return artifact as EmbedArtifact
 }
 
@@ -225,15 +234,18 @@ export async function prepare_embed_artifact(value: unknown, policy: ResourcePol
 
 /** Compute the normalized cross-language SHA-256 artifact identity. */
 export async function compute_embed_artifact_fingerprint(artifact: EmbedArtifact): Promise<string> {
-  const payload = normalize_model_ids({
+  const source = artifact.source.kind == "standalone" ? {
+    ...artifact.source,
+    documents: artifact.source.documents.map(normalize_model_ids) as DocJson[],
+  } : artifact.source
+  const payload = {
     schema: artifact.schema,
     bokeh_version: artifact.bokeh_version,
-    source: artifact.source,
+    source,
     roots: artifact.roots,
     requires: artifact.requires,
     metadata: artifact.metadata,
-    buffers: artifact.buffers,
-  })
+  }
   const encoded = new TextEncoder().encode(JSON.stringify(sort_keys(payload)))
   const digest = await globalThis.crypto.subtle.digest("SHA-256", encoded)
   return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("")
@@ -241,10 +253,12 @@ export async function compute_embed_artifact_fingerprint(artifact: EmbedArtifact
 
 function normalize_model_ids(value: unknown): unknown {
   const ids: string[] = []
+  const seen = new Set<string>()
   const collect = (child: unknown): void => {
     if (isPlainObject(child)) {
       const record = child as {[key: string]: unknown}
-      if (record.type == "object" && typeof record.id == "string" && !ids.includes(record.id)) {
+      if (record.type == "object" && typeof record.id == "string" && !seen.has(record.id)) {
+        seen.add(record.id)
         ids.push(record.id)
       }
       for (const key of Object.keys(record).sort()) {

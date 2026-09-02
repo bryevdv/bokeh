@@ -53,6 +53,24 @@ class EmbedSpec:
     always_new: bool = False
     serialization: SerializationPolicy = "static"
 
+    def __post_init__(self) -> None:
+        if not self.models:
+            raise EmbedCompileError("an embedding specification requires at least one model")
+        if len(self.models) != len(self.keys):
+            raise EmbedCompileError("embedding specification models and keys must have equal lengths")
+        if any(not isinstance(model, Model) for model in self.models):
+            raise EmbedCompileError("embedding specification models must be Model instances")
+        if any(not isinstance(key, str) or not key for key in self.keys):
+            raise EmbedCompileError("embedding specification keys must be non-empty strings")
+        if len(self.keys) != len(set(self.keys)):
+            raise EmbedCompileError("embedding specification keys must be unique")
+        if self.input_shape not in ("single", "sequence", "mapping", "document"):
+            raise EmbedCompileError("input_shape must be 'single', 'sequence', 'mapping', or 'document'")
+        if self.callback_policy not in ("warn", "error", "suppress"):
+            raise EmbedCompileError("callback_policy must be 'warn', 'error', or 'suppress'")
+        if self.serialization not in ("static", "protocol"):
+            raise EmbedCompileError("serialization must be 'static' or 'protocol'")
+
 
 def embed(models: EmbedInput, *, theme: ThemeSource = None, callback_policy: CallbackPolicy = "warn",
         metadata: Mapping[str, Any] | None = None, _always_new: bool = False) -> EmbedArtifact:
@@ -86,9 +104,6 @@ def embed_protocol(models: EmbedInput, *, theme: ThemeSource = None,
 
 def compile_embed(spec: EmbedSpec) -> EmbedArtifact:
     '''Compile an already-normalized specification into an immutable artifact.'''
-    if spec.callback_policy not in ("warn", "error", "suppress"):
-        raise EmbedCompileError("callback_policy must be 'warn', 'error', or 'suppress'")
-
     if submodel_has_python_callbacks(spec.models):
         message = (
             "standalone embedding cannot execute Python callbacks; use CustomJS or a Bokeh server source"

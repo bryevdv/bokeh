@@ -63,14 +63,7 @@
         "metadata": {
           "fixture": "cross-language"
         },
-        "buffers": [
-          {
-            "id": "buffer-0",
-            "encoding": "base64",
-            "data": "AA=="
-          }
-        ],
-        "fingerprint": "8c39e1021fecb7f72564d8bb5a828d8e9672a83149185ff662d2eb5cd9f7fafc"
+        "fingerprint": "e5dfe3fab52396aaf87fa5352c1fc3f273952ef71080d35069a0cd037be849b2"
       }
     },
     {
@@ -109,8 +102,7 @@
         "metadata": {
           "fixture": "cross-language"
         },
-        "buffers": [],
-        "fingerprint": "a783cf2645b171ce72f4b76824338df8456dadc9b0748d8fd63970dea25f423e"
+        "fingerprint": "08d937861b8a70be1c6044bb4f687429d27d67dcffada89c1c4a81071198965a"
       }
     }
   ]
