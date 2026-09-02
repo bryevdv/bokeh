@@ -339,8 +339,21 @@ function resourceExecution(payload: ResourcePayload, javascript: string, signal:
   })
 }
 
-export async function loadResources(payload: ResourcePayload, javascript: string, node: HTMLElement, kernel?: KernelProxy): Promise<void> {
+function dependencyCycle(path: readonly string[], resourceId: string): BokehNotebookError {
+  const start = path.indexOf(resourceId)
+  const cycle = [...path.slice(start), resourceId]
+  return new BokehNotebookError(
+    "RESOURCE_DEPENDENCY_CYCLE",
+    `BokehJS resource records contain a dependency cycle: ${cycle.join(" -> ")}.`,
+    "Re-run the cells that published these resources. If the problem persists, restart the kernel and reload the notebook.",
+    {cycle},
+  )
+}
+
+export async function loadResources(payload: ResourcePayload, javascript: string, node: HTMLElement, kernel?: KernelProxy,
+    path: readonly string[] = []): Promise<void> {
   assertProtocol(payload)
+  if (path.includes(payload.resource_id)) throw dependencyCycle(path, payload.resource_id)
   const existing = resources.get(payload.resource_id)
   if (existing != null) {
     await existing.ready
@@ -351,7 +364,10 @@ export async function loadResources(payload: ResourcePayload, javascript: string
   let state!: ResourceState
   const ready = (async () => {
     for (const dependency of payload.dependencies) {
-      await requireResources(dependency, payload.bokeh_version, payload.python_version, kernel, payload.load_timeout)
+      await requireResources(
+        dependency, payload.bokeh_version, payload.python_version, kernel, payload.load_timeout,
+        [...path, payload.resource_id],
+      )
     }
     if (javascript.length === 0) {
       if (window.Bokeh != null) {
@@ -414,12 +430,13 @@ export async function loadResources(payload: ResourcePayload, javascript: string
 }
 
 async function requireResources(resourceId: string, version: string, pythonVersion: string | undefined,
-    kernel: KernelProxy | undefined, waitTimeout: number): Promise<void> {
+    kernel: KernelProxy | undefined, waitTimeout: number, path: readonly string[] = []): Promise<void> {
+  if (path.includes(resourceId)) throw dependencyCycle(path, resourceId)
   let state = resources.get(resourceId)
   if (state == null && kernel?.requestResource != null) {
     try {
       const record = await kernel.requestResource(resourceId)
-      await loadResources(record.payload, record.javascript, document.createElement("div"), kernel)
+      await loadResources(record.payload, record.javascript, document.createElement("div"), kernel, path)
       state = resources.get(resourceId)
     } catch (error) {
       if (error instanceof BokehNotebookError) throw error
@@ -663,13 +680,12 @@ async function renderArtifact(node: HTMLElement, payload: DisplayPayload, html: 
 }
 
 function temporarilyAttachForRender(node: HTMLElement): () => void {
-  if (node.isConnected && node.getRootNode() === document) return () => undefined
+  if (node.isConnected) return () => undefined
 
   // Jupyter may ask a MIME renderer to render before attaching its Lumino
-  // widget (and virtualized cells may remain detached). AnyWidget hosts may
-  // also mount output inside a shadow root. BokehJS resolves root elements
-  // through document.getElementById(), so give the renderer a temporary,
-  // non-visible light-DOM host for the duration of the embed.
+  // widget (and virtualized cells may remain detached). Give only genuinely
+  // detached renderers a temporary light-DOM host. Reparenting a connected
+  // shadow-DOM output breaks its host styling and lifecycle ownership.
   const parent = node.parentNode
   const next = node.nextSibling
   const host = document.createElement("div")

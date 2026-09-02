@@ -58,6 +58,7 @@ def test_show_doc_publishes_one_artifact_owned_output() -> None:
     assert "embed_items_notebook" not in html
     assert handle is _DOCUMENT_VIEW_HANDLES[payload["live_id"]]
     handle.close()
+    assert plot not in state.document.roots
 
 
 def test_show_doc_wraps_sequences_in_one_layout_artifact() -> None:
@@ -74,6 +75,60 @@ def test_show_doc_wraps_sequences_in_one_layout_artifact() -> None:
     [root] = state.document.roots
     assert list(root.children) == [first, second]
     handle.close()
+    assert state.document.roots == []
+
+
+def test_repeated_displays_share_output_root_until_final_handle_closes() -> None:
+    plot = figure()
+    state = State()
+    with (
+        patch("bokeh.io.notebook._use_anywidget", return_value=False),
+        patch("bokeh.io.notebook._ensure_notebook_resources", return_value="resource"),
+        patch("bokeh.io.notebook._register_notebook_comm_target"),
+        patch("bokeh.io.notebook.publish_display_data"),
+    ):
+        first = show_doc(plot, state)
+        second = show_doc(plot, state)
+
+    first.close()
+    assert plot in state.document.roots
+    second.close()
+    assert plot not in state.document.roots
+
+
+def test_preexisting_document_root_is_not_owned_by_output() -> None:
+    plot = figure()
+    state = State()
+    state.document.add_root(plot)
+    with (
+        patch("bokeh.io.notebook._use_anywidget", return_value=False),
+        patch("bokeh.io.notebook._ensure_notebook_resources", return_value="resource"),
+        patch("bokeh.io.notebook._register_notebook_comm_target"),
+        patch("bokeh.io.notebook.publish_display_data"),
+    ):
+        handle = show_doc(plot, state)
+
+    handle.close()
+    assert plot in state.document.roots
+
+
+def test_handle_eviction_releases_its_output_root() -> None:
+    first_plot, second_plot = figure(), figure()
+    state = State()
+    with (
+        patch("bokeh.io.notebook._MAX_RETAINED_VIEW_HANDLES", 1),
+        patch("bokeh.io.notebook._use_anywidget", return_value=False),
+        patch("bokeh.io.notebook._ensure_notebook_resources", return_value="resource"),
+        patch("bokeh.io.notebook._register_notebook_comm_target"),
+        patch("bokeh.io.notebook.publish_display_data"),
+    ):
+        first = show_doc(first_plot, state)
+        second = show_doc(second_plot, state)
+
+    assert first.closed
+    assert first_plot not in state.document.roots
+    assert second_plot in state.document.roots
+    second.close()
 
 
 def test_automatic_mimebundle_has_one_static_artifact_and_no_live_owner() -> None:

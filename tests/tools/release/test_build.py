@@ -41,6 +41,7 @@ def test_conda_recipe_dependencies_match_project_dependencies() -> None:
     ("func", "command", "environment"),
     [
         (build.build_bokehjs, "node make build", {}),
+        (build.build_jupyter, "npm run build", {}),
         (build.build_npm_packages, "npm pack --workspace frameworks/web-component", {}),
         (
             build.build_conda_package,
@@ -97,6 +98,7 @@ def test_command_build_steps(
     ("func", "command"),
     [
         (build.build_bokehjs, "node make build"),
+        (build.build_jupyter, "npm run build"),
         (build.build_npm_packages, "npm pack --workspace frameworks/web-component"),
         (
             build.build_conda_package,
@@ -124,11 +126,14 @@ def test_command_build_steps_report_failure(config: Config, func: StepType, comm
 
     assert result.kind is ActionResult.FAIL
     assert result.details == ("command failed",)
+    if func is build.build_jupyter:
+        assert system.directories[-1] == ("popd", None)
 
 
 def test_directory_build_steps_use_expected_working_directories(config: Config) -> None:
     cases = [
         (build.build_bokehjs, [("cd", "bokehjs"), ("cd", "..")]),
+        (build.build_jupyter, [("pushd", "src/bokeh/jupyter/frontend"), ("popd", None)]),
         (build.build_npm_packages, [("cd", "bokehjs"), ("cd", "..")]),
         (build.build_docs, [("cd", "docs/bokeh"), ("cd", "../..")]),
         (build.npm_install, [("cd", "bokehjs"), ("cd", "..")]),
@@ -138,6 +143,19 @@ def test_directory_build_steps_use_expected_working_directories(config: Config) 
         system = RecordingSystem()
         func(config, system)
         assert system.directories == expected
+
+
+def test_jupyter_build_reinstalls_and_tracks_generated_outputs(config: Config) -> None:
+    system = RecordingSystem()
+
+    result = build.build_jupyter(config, system)
+
+    assert result.kind is ActionResult.PASS
+    assert system.commands == ["npm ci --no-progress", "npm run build"]
+    assert config.modified == {
+        "src/bokeh/jupyter/anywidget.js",
+        "src/bokeh/jupyter/labextension",
+    }
 
 
 def test_build_npm_packages_packs_every_public_package_in_dependency_order(config: Config) -> None:
@@ -243,6 +261,66 @@ def test_update_bokehjs_versions_rejects_old_lockfile(tmp_path: Path, monkeypatc
     assert result.details is not None
     assert "Expected lock file v3" in result.details
     assert Path.cwd() == tmp_path
+
+
+def test_update_and_verify_jupyter_release_frontend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    frontend = tmp_path / "src" / "bokeh" / "jupyter" / "frontend"
+    labextension = frontend.parent / "labextension"
+    static = labextension / "static"
+    static.mkdir(parents=True)
+    frontend.mkdir(parents=True, exist_ok=True)
+    (frontend / "package.json").write_text(json.dumps({"name": "@bokeh/bokeh-jupyter", "version": "0.0.0"}))
+    (frontend / "package-lock.json").write_text(json.dumps({
+        "name": "@bokeh/bokeh-jupyter",
+        "version": "0.0.0",
+        "lockfileVersion": 3,
+        "packages": {"": {"name": "@bokeh/bokeh-jupyter", "version": "0.0.0"}},
+    }))
+    (frontend.parent / "anywidget.js").write_text("generated")
+    (labextension / "package.json").write_text(json.dumps({
+        "name": "@bokeh/bokeh-jupyter",
+        "version": "4.0.0-rc.2",
+        "jupyterlab": {"_build": {"load": "static/remoteEntry.test.js"}},
+    }))
+    (static / "remoteEntry.test.js").write_text("generated")
+    monkeypatch.chdir(tmp_path)
+    config = Config("4.0.0rc2")
+
+    result = build.update_jupyter_version(config, RecordingSystem())
+
+    assert result.kind is ActionResult.PASS
+    assert json.loads((frontend / "package.json").read_text())["version"] == "4.0.0-rc.2"
+    lock = json.loads((frontend / "package-lock.json").read_text())
+    assert lock["version"] == "4.0.0-rc.2"
+    assert lock["packages"][""]["version"] == "4.0.0-rc.2"
+    assert config.modified == {
+        "src/bokeh/jupyter/frontend/package.json",
+        "src/bokeh/jupyter/frontend/package-lock.json",
+    }
+    assert build.verify_jupyter_build(config, RecordingSystem()).kind is ActionResult.PASS
+
+
+def test_verify_jupyter_release_frontend_rejects_stale_generated_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frontend = tmp_path / "src" / "bokeh" / "jupyter" / "frontend"
+    labextension = frontend.parent / "labextension"
+    (labextension / "static").mkdir(parents=True)
+    frontend.mkdir(parents=True, exist_ok=True)
+    (frontend / "package.json").write_text(json.dumps({"version": "4.0.0"}))
+    (labextension / "package.json").write_text(json.dumps({
+        "version": "4.0.0-dev.4",
+        "jupyterlab": {"_build": {"load": "static/remoteEntry.test.js"}},
+    }))
+    (frontend.parent / "anywidget.js").write_text("generated")
+    (labextension / "static" / "remoteEntry.test.js").write_text("generated")
+    monkeypatch.chdir(tmp_path)
+
+    result = build.verify_jupyter_build(Config("4.0.0"), RecordingSystem())
+
+    assert result.kind is ActionResult.FAIL
+    assert result.details is not None
+    assert "source/generated versions" in result.details[0]
 
 
 def test_update_bokehjs_versions_reports_missing_package_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

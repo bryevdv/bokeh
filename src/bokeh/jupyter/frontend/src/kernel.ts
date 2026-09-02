@@ -3,6 +3,7 @@ import {ReadonlyJSONObject} from "@lumino/coreutils"
 
 import {ContextManager} from "./context"
 import {BokehNotebookError} from "./protocol"
+import {RevisionQueue} from "./revision_queue"
 import {ApplicationViewConnection, KernelProxy, LiveConnection, ResourceRecord} from "./runtime"
 
 const RESOURCE_COMM_TARGET = "bokeh.resources.v1"
@@ -73,7 +74,7 @@ export function kernelProxy(manager: ContextManager): KernelProxy {
       if (kernel == null) throw new Error("The notebook kernel is not connected")
       return new Promise<LiveConnection>((resolve, reject) => {
         const comm = kernel.createComm(NOTEBOOK_COMM_TARGET)
-        const queued: Array<{message: any, buffers: DataView[]}> = []
+        const queued = new RevisionQueue()
         let receive: ((message: any, buffers: DataView[]) => void) | undefined
         let receiveClose: (() => void) | undefined
         let settled = false
@@ -95,7 +96,7 @@ export function kernelProxy(manager: ContextManager): KernelProxy {
           revision,
           onMessage(callback) {
             receive = callback
-            for (const item of queued.splice(0)) callback(item.message, item.buffers)
+            queued.drain(callback)
           },
           onClose(callback) {
             receiveClose = callback
@@ -134,8 +135,16 @@ export function kernelProxy(manager: ContextManager): KernelProxy {
             return
           }
           const kind = (data as ReadonlyJSONObject)?.kind
-          if (kind === "patch" || kind === "snapshot") {
-            if (receive == null) queued.push({message: data, buffers})
+          if (kind === "patch") {
+            if (queued.awaitingResync) return
+            if (receive == null) {
+              if (queued.pushPatch(data, buffers) === "overflow") {
+                try {comm.send({kind: "resync"})}
+                catch { /* A closed connection recovers on the next renderer mount. */ }
+              }
+            } else receive(data, buffers)
+          } else if (kind === "snapshot") {
+            if (receive == null) queued.replaceWithSnapshot(data, buffers)
             else receive(data, buffers)
           }
         }

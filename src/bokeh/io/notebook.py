@@ -172,11 +172,14 @@ class DocumentViewHandle:
         self._held_source_events: list[DocumentPatchedEvent] = []
         self._revision = 0
         self._source_document: Document | None = None
+        self._output_root_key: tuple[int, int] | None = None
         self._closed = False
         self._frontend: Any | None = None
 
-    def _attach(self, source_document: Document) -> None:
+    def _attach(self, source_document: Document, *, output_root: bool = False) -> None:
         self._source_document = source_document
+        if output_root:
+            self._output_root_key = _claim_output_root(source_document, self._root)
         source_document.callbacks.on_change_dispatch_to(self)
 
     @staticmethod
@@ -243,6 +246,9 @@ class DocumentViewHandle:
             except KeyError:
                 pass
             self._source_document = None
+        if self._output_root_key is not None:
+            _release_output_root(self._output_root_key)
+            self._output_root_key = None
         self._held_source_events.clear()
         _DOCUMENT_VIEW_HANDLES.pop(self._live_id, None)
         _DOCUMENT_VIEW_HANDLES_BY_VIEW.pop(self._view_id, None)
@@ -425,9 +431,31 @@ class ApplicationViewHandle:
 _DOCUMENT_VIEW_HANDLES: dict[str, DocumentViewHandle] = {}
 _DOCUMENT_VIEW_HANDLES_BY_VIEW: dict[str, DocumentViewHandle] = {}
 _APPLICATION_VIEW_HANDLES: dict[str, ApplicationViewHandle] = {}
+_OUTPUT_DOCUMENT_ROOTS: dict[tuple[int, int], tuple[Document, Model, int]] = {}
 _MAX_RETAINED_VIEW_HANDLES = 128
 _NOTEBOOK_COMM_KERNEL: Any | None = None
 _NOTEBOOK_COMM_TARGET = "bokeh.notebook.v1"
+
+
+def _claim_output_root(document: Document, root: Model) -> tuple[int, int]:
+    key = (id(document), id(root))
+    existing = _OUTPUT_DOCUMENT_ROOTS.get(key)
+    count = 0 if existing is None else existing[2]
+    _OUTPUT_DOCUMENT_ROOTS[key] = (document, root, count + 1)
+    return key
+
+
+def _release_output_root(key: tuple[int, int]) -> None:
+    ownership = _OUTPUT_DOCUMENT_ROOTS.get(key)
+    if ownership is None:
+        return
+    document, root, count = ownership
+    if count > 1:
+        _OUTPUT_DOCUMENT_ROOTS[key] = (document, root, count - 1)
+        return
+    _OUTPUT_DOCUMENT_ROOTS.pop(key, None)
+    if root in document.roots:
+        document.remove_root(root)
 
 
 def _retain_document_handle(handle: DocumentViewHandle) -> None:
@@ -600,7 +628,8 @@ def show_doc(obj: Model | Sequence[UIElement], state: State,
         from ..layouts import column
         obj = column(*obj)
 
-    if obj not in state.document.roots:
+    added_root = obj not in state.document.roots
+    if added_root:
         state.document.add_root(obj)
 
     from ..embed.notebook import notebook_content
@@ -622,7 +651,8 @@ def show_doc(obj: Model | Sequence[UIElement], state: State,
     payload = display_payload(artifact, resource_id, view_id, live_id=live_id)
 
     handle = DocumentViewHandle(obj, live_id=live_id, view_id=view_id)
-    handle._attach(state.document)
+    root_key = (id(state.document), id(obj))
+    handle._attach(state.document, output_root=added_root or root_key in _OUTPUT_DOCUMENT_ROOTS)
     _retain_document_handle(handle)
     if not use_anywidget:
         _register_notebook_comm_target()
@@ -825,6 +855,7 @@ def _reset_notebook_resources() -> None:
     _RESOURCE_RECORDS.clear()
     _ARTIFACT_OWNERS.clear()
     _DOCUMENT_VIEW_HANDLES_BY_VIEW.clear()
+    _OUTPUT_DOCUMENT_ROOTS.clear()
     _NOTEBOOK_COMM_KERNEL = None
     _RESOURCE_COMM_KERNEL = None
 
