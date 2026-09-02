@@ -77,8 +77,6 @@ export type Patch = {
   events: DocumentChanged[]
 }
 
-export const documents: Document[] = []
-
 export const DEFAULT_TITLE = "Bokeh Application"
 
 function immediate_refs(value: unknown): HasProps[] {
@@ -233,7 +231,6 @@ export class Document implements Equatable {
   }
 
   constructor(options: DocumentOptions = {}) {
-    documents.push(this)
     this._init_timestamp = Date.now()
     this.resolver = options.resolver ?? new ModelResolver(default_resolver)
     this._title = DEFAULT_TITLE
@@ -308,10 +305,6 @@ export class Document implements Equatable {
     this._message_callbacks.clear()
     this.event_manager.subscribed_models.clear()
 
-    const i = documents.indexOf(this)
-    if (i >= 0) {
-      documents.splice(i, 1)
-    }
   }
 
   private _notified_idle: boolean = false

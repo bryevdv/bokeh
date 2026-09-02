@@ -1,11 +1,13 @@
 import {expect, expect_instanceof, expect_not_null} from "#framework/assertions"
 
+import * as sinon from "sinon"
+
 import {default_resolver} from "@bokehjs/base"
 import {
   BOKEH_MOUNTED_ATTRIBUTE, mount, mount_artifact_declaration, MountError, type MountErrorPhase, when_mounted,
 } from "@bokehjs/api/io"
 import {ModelResolver} from "@bokehjs/core/resolvers"
-import {documents} from "@bokehjs/document"
+import {Document} from "@bokehjs/document"
 import * as embed from "@bokehjs/embed"
 import type {EmbedArtifact} from "@bokehjs/embed/artifact"
 import {ArtifactError, compute_embed_artifact_fingerprint, validate_embed_artifact} from "@bokehjs/embed/artifact"
@@ -80,8 +82,6 @@ describe("EmbedArtifact runtime", () => {
     const target = document.createElement("div")
     document.body.append(target)
     const resolver = new ModelResolver(default_resolver, [CustomJS])
-    const documents_before = documents.length
-
     const mounted = mount(artifact, target, {resources: "none", resolver})
     expect(mounted.state).to.be.equal("pending")
     await mounted.ready
@@ -92,12 +92,13 @@ describe("EmbedArtifact runtime", () => {
     expect(mounted.ownership.resources).to.be.equal("shared")
     expect(mounted.ownership.session).to.be.equal("none")
     expect(mounted.session).to.be.null
-    expect(documents.length).to.be.equal(documents_before + 1)
+    const owned_document = mounted.document
+    expect(owned_document.is_destroyed).to.be.false
 
     await mounted.dispose()
     await mounted.dispose()
     expect(mounted.disposed).to.be.true
-    expect(documents.length).to.be.equal(documents_before)
+    expect(owned_document.is_destroyed).to.be.true
     target.remove()
   })
 
@@ -309,14 +310,13 @@ describe("EmbedArtifact runtime", () => {
   it("rolls back a decoded artifact after target failure", async () => {
     const artifact = await mountable_fixture("standalone-keyed-roots")
     const resolver = new ModelResolver(default_resolver, [CustomJS])
-    const documents_before = documents.length
     const mounted = mount(artifact, document.createElement("div"), {resources: "none", resolver})
 
     const error = await mounted.ready.then(() => null, (error: unknown) => error)
     expect_instanceof(error, MountError)
     expect(error.kind).to.be.equal("target")
     expect(mounted.disposed).to.be.true
-    expect(documents.length).to.be.equal(documents_before)
+    expect(mounted.document.is_destroyed).to.be.true
   })
 
   it("can be disposed before artifact decoding completes", async () => {
@@ -324,15 +324,19 @@ describe("EmbedArtifact runtime", () => {
     const resolver = new ModelResolver(default_resolver, [CustomJS])
     const target = document.createElement("div")
     document.body.append(target)
-    const documents_before = documents.length
-    const mounted = mount(artifact, target, {resources: "none", resolver})
+    const destroy = sinon.spy(Document.prototype, "destroy")
+    try {
+      const mounted = mount(artifact, target, {resources: "none", resolver})
 
-    await mounted.dispose()
-    const error = await mounted.ready.then(() => null, (error: unknown) => error)
-    expect_instanceof(error, MountError)
-    expect(error.kind).to.be.equal("disposed")
-    expect(documents.length).to.be.equal(documents_before)
-    target.remove()
+      await mounted.dispose()
+      const error = await mounted.ready.then(() => null, (error: unknown) => error)
+      expect_instanceof(error, MountError)
+      expect(error.kind).to.be.equal("disposed")
+      expect(destroy.calledOnce).to.be.true
+    } finally {
+      destroy.restore()
+      target.remove()
+    }
   })
 
   it("reports schema and runtime version errors through handle.ready", async () => {
