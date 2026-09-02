@@ -22,10 +22,12 @@ export type ResourceAsset = {
   module?: boolean
 }
 
+export type ResourceRequirementAsset = Omit<ResourceAsset, "nonce">
+
 /** Named extension and the assets it contributes. */
 export type ExtensionRequirement = {
   name: string
-  assets: ResourceAsset[]
+  assets: ResourceRequirementAsset[]
 }
 
 /** Exact capabilities and extensions declared by an artifact. */
@@ -162,7 +164,7 @@ function resolve_assets(requirements: ResourceRequirements, policy: NormalizedPo
   for (const extension of requirements.extensions) {
     assets.push(...extension.assets.map((asset) => ({
       ...asset,
-      nonce: asset.nonce ?? policy.nonce,
+      nonce: policy.nonce,
       crossorigin: asset.crossorigin ?? policy.crossorigin ?? (asset.integrity != null ? "anonymous" : undefined),
     })))
   }

@@ -101,6 +101,8 @@ class ResourceAssetRequirement:
     def from_dict(cls, value: Mapping[str, Any]) -> ResourceAssetRequirement:
         if not isinstance(value, Mapping):
             raise ValueError("resource asset requirements must be objects")
+        if "nonce" in value:
+            raise ValueError("resource asset requirement nonce is host-owned")
         kind = value.get("kind")
         if kind not in ("script", "style"):
             raise ValueError("resource asset requirement kind must be 'script' or 'style'")

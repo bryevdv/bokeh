@@ -205,6 +205,13 @@ def test_artifact_round_trip_validates_fingerprint_and_schema() -> None:
             }]),
             "kind must be 'script' or 'style'",
         ),
+        (
+            lambda value: value["requires"].update(extensions=[{
+                "name": "bad",
+                "assets": [{"kind": "script", "content": "void 0", "nonce": "artifact"}],
+            }]),
+            "nonce is host-owned",
+        ),
     ],
 )
 def test_artifact_python_validation_matches_browser_contract(
@@ -587,3 +594,20 @@ def test_server_artifact_is_deterministic_structured_and_selective() -> None:
 
     with pytest.raises(EmbedCompileError, match="mutually exclusive"):
         embed_server("https://example.test/app", headers={"X": "1"}, with_credentials=True)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("session_id", "", "session_id must be a non-empty string"),
+        ("session_id", 1, "session_id must be a non-empty string"),
+        ("token", {}, "token must be a non-empty string"),
+        ("relative_urls", "yes", "relative_urls must be a boolean"),
+    ],
+)
+def test_server_artifact_rejects_malformed_optional_fields(field: str, value: Any, message: str) -> None:
+    artifact = embed_server("https://example.test/app").to_dict()
+    artifact["source"][field] = value
+
+    with pytest.raises(ArtifactValidationError, match=message):
+        EmbedArtifact.from_dict(artifact)
