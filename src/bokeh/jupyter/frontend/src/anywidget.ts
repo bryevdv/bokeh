@@ -1,4 +1,5 @@
 import {BokehNotebookError, DisplayPayload} from "./protocol"
+import {RevisionQueue} from "./revision_queue"
 import {KernelProxy, LiveConnection, ResourceRecord, currentDocumentSnapshot, renderDiagnostic, renderDisplay, renderLoading} from "./runtime"
 
 // AnyWidget is a transport adapter, not a rendering implementation. It owns
@@ -15,15 +16,11 @@ type AnyModel = {
 type AnyWidgetContext = {model: AnyModel, signal: AbortSignal}
 type AnyWidgetRenderContext = AnyWidgetContext & {el: HTMLElement}
 
-type Patch = {message: any, buffers: DataView[], bytes: number}
 type Snapshot = {artifactJson: string, revision: number}
 type ResourceWaiter = {
   resolve(record: ResourceRecord): void
   reject(error: unknown): void
 }
-
-export const ANYWIDGET_MAX_PENDING_PATCHES = 64
-export const ANYWIDGET_MAX_PENDING_BYTES = 8 * 1024 * 1024
 
 function waitForTransport<T>(promise: Promise<T>, milliseconds: number, error: BokehNotebookError,
     signal: AbortSignal): Promise<T> {
@@ -61,9 +58,7 @@ export default function anywidgetFactory() {
     snapshotResolve = resolve
     snapshotReject = reject
   })
-  const patches: Patch[] = []
-  let patchBytes = 0
-  let awaitingSnapshot = false
+  const revisions = new RevisionQueue()
   const patchListeners = new Set<(message: any, buffers: DataView[]) => void>()
   let applicationReady = false
   let applicationResolve: (() => void) | undefined
@@ -82,27 +77,16 @@ export default function anywidgetFactory() {
   const initialize = ({model, signal}: AnyWidgetContext) => {
     const receive = (data: any, buffers: ArrayBufferView[] = []) => {
       if (data?.kind === "patch" && Number.isSafeInteger(data.revision)) {
-        if (awaitingSnapshot) return
         const views = dataViews(buffers)
-        const bytes = views.reduce((total, view) => total + view.byteLength, JSON.stringify(data).length)
-        const patch = {message: data, buffers: views, bytes}
+        if (revisions.awaitingResync) return
         if (patchListeners.size === 0) {
-          patches.push(patch)
-          patchBytes += bytes
-          if (patches.length > ANYWIDGET_MAX_PENDING_PATCHES || patchBytes > ANYWIDGET_MAX_PENDING_BYTES) {
-            patches.length = 0
-            patchBytes = 0
-            awaitingSnapshot = true
-            model.send({kind: "resync"})
-          }
+          if (revisions.pushPatch(data, views) === "overflow") model.send({kind: "resync"})
         } else {
-          for (const listener of patchListeners) listener(patch.message, patch.buffers)
+          for (const listener of patchListeners) listener(data, views)
         }
       } else if (data?.kind === "snapshot" && typeof data.artifact === "string" && Number.isSafeInteger(data.revision)) {
-        awaitingSnapshot = false
         snapshot = {artifactJson: data.artifact, revision: data.revision}
-        patches.splice(0, patches.length, ...patches.filter((patch) => patch.message.revision > data.revision))
-        patchBytes = patches.reduce((total, patch) => total + patch.bytes, 0)
+        revisions.reset(data.revision)
         snapshotResolve?.(snapshot)
         if (patchListeners.size !== 0) {
           for (const listener of patchListeners) listener(data, [])
@@ -156,8 +140,7 @@ export default function anywidgetFactory() {
       const error = new DOMException("Rendering was cancelled", "AbortError")
       for (const waiter of resourceWaiters.values()) waiter.reject(error)
       resourceWaiters.clear()
-      patches.length = 0
-      patchBytes = 0
+      revisions.clear()
       patchListeners.clear()
       liveCloseListeners.clear()
       applicationCloseListeners.clear()
@@ -223,8 +206,7 @@ export default function anywidgetFactory() {
               callback(message, buffers)
             }
             patchListeners.add(listener)
-            for (const patch of patches.splice(0)) listener(patch.message, patch.buffers)
-            patchBytes = 0
+            revisions.drain(listener)
           },
           onClose(callback) {
             closeListener = callback

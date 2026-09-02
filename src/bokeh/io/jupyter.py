@@ -251,7 +251,18 @@ def _artifact(resource: ResolvedResource) -> ArtifactPayload:
     kind: Literal["js", "css"] = "js" if resource.kind == "script" else "css"
     source: Literal["url", "inline"] = "url" if resource.url is not None else "inline"
     value = _resource_value(resource)
-    digest = _artifact_digest(value)
+    core = kind == "js" and re.search(r"(?:BEGIN |/|^)bokeh(?:-[0-9][^/]*)?(?:\.min)?\.js(?: \*/|\?|$)", value) is not None
+    identity = {
+        "kind": kind,
+        "source": source,
+        "value": _artifact_digest(value),
+        "integrity": resource.integrity,
+        "crossorigin": resource.crossorigin,
+        "nonce": resource.nonce,
+        "module": resource.module,
+        "core": core,
+    }
+    digest = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
     artifact = ArtifactPayload(id=f"{kind}-{source}-{digest}", kind=kind, source=source)
     if resource.url is not None:
         artifact["url"] = resource.url
@@ -260,7 +271,7 @@ def _artifact(resource: ResolvedResource) -> ArtifactPayload:
             artifact[name] = item
     if resource.module:
         artifact["module"] = True
-    if kind == "js" and re.search(r"(?:BEGIN |/|^)bokeh(?:-[0-9][^/]*)?(?:\.min)?\.js(?: \*/|\?|$)", value):
+    if core:
         artifact["core"] = True
     return artifact
 

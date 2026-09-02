@@ -221,4 +221,58 @@ describe("artifact runtime", () => {
     cleanup()
     expect(node.querySelector(".bk-notebook-disconnected")).toBeNull()
   })
+
+  it("rejects self and cross resource-dependency cycles with diagnostics", async () => {
+    const node = document.createElement("div")
+    const self = {...resource, resource_id: "self", dependencies: ["self"]}
+    await expect(loadResources(self, "", node)).rejects.toMatchObject({
+      code: "RESOURCE_DEPENDENCY_CYCLE",
+      cause: {cycle: ["self", "self"]},
+    })
+
+    resetResourceRegistry()
+    const first = {...resource, resource_id: "first", dependencies: ["second"]}
+    const second = {...resource, resource_id: "second", dependencies: ["first"]}
+    await expect(loadResources(first, "", node, {
+      requestResource: async (resourceId) => ({
+        payload: resourceId === "second" ? second : first,
+        javascript: "",
+      }),
+    })).rejects.toMatchObject({
+      code: "RESOURCE_DEPENDENCY_CYCLE",
+      cause: {cycle: ["first", "second", "first"]},
+    })
+  })
+
+  it("does not reparent connected shadow-DOM output", async () => {
+    const dispose = vi.fn(async () => undefined)
+    const handle = {
+      ready: Promise.resolve(),
+      dispose,
+      document: {to_json: () => ({roots: []}), roots: () => []},
+      root_keys: [],
+      root: () => null,
+      view_lookup: {},
+    }
+    const host = document.createElement("div")
+    const shadow = host.attachShadow({mode: "open"})
+    const node = document.createElement("div")
+    shadow.append(node)
+    document.body.append(host)
+    const mount = vi.fn(() => {
+      expect(node.parentNode).toBe(shadow)
+      return handle
+    })
+    ;(window as any).Bokeh = {
+      version: "4.0.0",
+      mount,
+      when_mounted: vi.fn(async () => handle),
+    }
+    await loadResources(resource, "", node)
+
+    const cleanup = await renderDisplay(node, display, html)
+    expect(node.parentNode).toBe(shadow)
+    cleanup()
+    host.remove()
+  })
 })

@@ -34,6 +34,7 @@ jobs:
       tools: ${{ steps.full.outputs.selected == 'true' || steps.filter.outputs.tools == 'true' }}
       examples: ${{ steps.full.outputs.selected == 'true' || steps.filter.outputs.examples == 'true' }}
       unit_test: ${{ steps.full.outputs.selected == 'true' || steps.filter.outputs.unit_test == 'true' }}
+      jupyter: ${{ steps.full.outputs.selected == 'true' || steps.filter.outputs.jupyter == 'true' }}
       minimal_deps: ${{ steps.full.outputs.selected == 'true' || steps.filter.outputs.minimal_deps == 'true' }}
       core_deps: ${{ steps.full.outputs.selected == 'true' || steps.filter.outputs.core_deps == 'true' }}
       documentation: ${{ steps.full.outputs.selected == 'true' || steps.filter.outputs.documentation == 'true' }}
@@ -311,7 +312,8 @@ jobs:
           collect-coverage: ${{ runner.os != 'Windows' }}
 
   jupyter:
-    needs: build
+    needs: [changes, build]
+    if: needs.changes.outputs.jupyter == 'true' && needs.build.result == 'success'
     runs-on: ubuntu-24.04
 
     steps:
@@ -442,7 +444,7 @@ jobs:
   result:
     name: Bokeh-CI / result
     if: ${{ always() }}
-    needs: [changes, build, codebase, tools, typing, examples, unit-test, minimal-deps, core-deps, documentation]
+    needs: [changes, build, codebase, tools, typing, examples, unit-test, jupyter, minimal-deps, core-deps, documentation]
     runs-on: ubuntu-24.04
 
     steps:
@@ -460,6 +462,7 @@ jobs:
                 ["typing", "typing"],
                 ["examples", "examples"],
                 ["unit-test", "unit_test"],
+                ["jupyter", "jupyter"],
                 ["minimal-deps", "minimal_deps"],
                 ["core-deps", "core_deps"],
                 ["documentation", "documentation"]

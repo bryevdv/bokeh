@@ -74,6 +74,28 @@ def test_resource_identity_ignores_load_timeout_but_not_policy() -> None:
     assert resource_payload(_resolved("cdn"), 1000)["resource_id"] != resource_payload(_resolved("none"), 1000)["resource_id"]
 
 
+def test_resource_identity_includes_complete_emitted_security_and_module_policy() -> None:
+    requirements = ResourceRequirements()
+    policies = [
+        ResourcePolicy(mode="cdn", nonce="first"),
+        ResourcePolicy(mode="cdn", nonce="second"),
+        ResourcePolicy(mode="cdn", crossorigin="anonymous"),
+        ResourcePolicy(mode="cdn", crossorigin="use-credentials"),
+    ]
+    assets = [
+        ResolvedResource("script", url="https://cdn.example/extension.js", nonce="first"),
+        ResolvedResource("script", url="https://cdn.example/extension.js", nonce="second"),
+        ResolvedResource("script", url="https://cdn.example/extension.js", integrity="sha384-one", crossorigin="anonymous"),
+        ResolvedResource("script", url="https://cdn.example/extension.js", integrity="sha384-two", crossorigin="anonymous", module=True),
+    ]
+    resolved = [ResolvedResources(requirements, policy, (asset,)) for policy, asset in zip(policies, assets, strict=True)]
+
+    artifact_ids = [resource_artifact_ids(item)[0] for item in resolved]
+    resource_ids = [resource_payload(item, 1000)["resource_id"] for item in resolved]
+    assert len(set(artifact_ids)) == len(artifact_ids)
+    assert len(set(resource_ids)) == len(resource_ids)
+
+
 @pytest.mark.parametrize("policy", [
     ResourcePolicy(mode="inline"),
     ResourcePolicy(mode="offline"),
