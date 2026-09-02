@@ -220,7 +220,7 @@ class ResolvedResource:
 
     @property
     def identity(self) -> tuple[Any, ...]:
-        return (self.kind, self.url, self.content, self.integrity, self.crossorigin, self.module)
+        return (self.kind, self.url, self.content, self.integrity, self.crossorigin, self.nonce, self.module)
 
     def to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {"kind": self.kind}

@@ -21,7 +21,6 @@ from unittest.mock import MagicMock, patch
 
 # Bokeh imports
 from bokeh.io.state import curstate
-from bokeh.resources import Resources
 
 # Module under test
 import bokeh.io.output as bio # isort:skip
@@ -52,23 +51,6 @@ class Test_output_file:
         assert mock_output_file.call_args[0] == ("foo.html",)
         assert mock_output_file.call_args[1] == kwargs
 
-
-class Test_output_notebook:
-    @patch('bokeh.io.output.run_notebook_hook')
-    def test_no_args(self, mock_run_notebook_hook: MagicMock) -> None:
-        default_load_jupyter_args = (None, False, False, 5000)
-        bio.output_notebook()
-        assert mock_run_notebook_hook.call_count == 1
-        assert mock_run_notebook_hook.call_args[0] == ('jupyter', 'load', *default_load_jupyter_args)
-        assert mock_run_notebook_hook.call_args[1] == {}
-
-    @patch('bokeh.io.output.run_notebook_hook')
-    def test_with_args(self, mock_run_notebook_hook: MagicMock) -> None:
-        load_jupyter_args = (Resources(), True, True, 1000)
-        bio.output_notebook(*load_jupyter_args)
-        assert mock_run_notebook_hook.call_count == 1
-        assert mock_run_notebook_hook.call_args[0] == ('jupyter', 'load', *load_jupyter_args)
-        assert mock_run_notebook_hook.call_args[1] == {}
 
 @patch('bokeh.io.state.State.reset')
 def test_reset_output(mock_reset: MagicMock) -> None:

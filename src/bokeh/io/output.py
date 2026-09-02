@@ -24,13 +24,11 @@ log = logging.getLogger(__name__)
 from typing import TYPE_CHECKING
 
 # Bokeh imports
-from .notebook import run_notebook_hook
 from .state import curstate
 
 if TYPE_CHECKING:
     from ..core.types import PathLike
-    from ..resources import Resources, ResourcesMode
-    from .notebook import NotebookType
+    from ..resources import ResourcesMode
     from .state import State
 
 #-----------------------------------------------------------------------------
@@ -39,7 +37,6 @@ if TYPE_CHECKING:
 
 __all__ = (
     'output_file',
-    'output_notebook',
     'reset_output',
 )
 
@@ -49,12 +46,11 @@ __all__ = (
 
 def output_file(filename: PathLike, title: str = "Bokeh Plot",
         mode: ResourcesMode | None = None, root_dir: PathLike | None = None) -> None:
-    ''' Configure the default output state to generate output saved
-    to a file when :func:`show` is called.
+    ''' Configure the default output state for a standalone HTML file.
 
-    Does not change the current ``Document`` from ``curdoc()``. File and notebook
-    output may be active at the same time, so e.g., this does not clear the
-    effects of ``output_notebook()``.
+    Does not change the current ``Document`` from ``curdoc()``. In an
+    interactive notebook, :func:`show` displays inline and does not consume
+    this file configuration; call :func:`~bokeh.io.save` explicitly instead.
 
     Args:
         filename (str) : a filename for saving the HTML document
@@ -77,8 +73,8 @@ def output_file(filename: PathLike, title: str = "Bokeh Plot",
         session or the top of a script.
 
     .. warning::
-        This output file will be overwritten on every save, e.g., each time
-        |show| or |save| is invoked.
+        This output file will be overwritten by each explicit |save|, or by
+        |show| outside an interactive notebook.
 
     '''
     curstate().output_file(
@@ -88,41 +84,6 @@ def output_file(filename: PathLike, title: str = "Bokeh Plot",
         root_dir=root_dir,
     )
 
-def output_notebook(resources: Resources | None = None, verbose: bool = False,
-        hide_banner: bool = False, load_timeout: int = 5000, notebook_type: NotebookType = "jupyter") -> None:
-    ''' Configure the default output state to generate output in notebook cells
-    when |show| is called. Note that |show| may be called multiple
-    times in a single cell to display multiple objects in the output cell. The
-    objects will be displayed in order.
-
-    Args:
-        resources (Resource, optional) :
-            How and where to load BokehJS from (default: CDN)
-
-        verbose (bool, optional) :
-            whether to display detailed BokehJS banner (default: False)
-
-        hide_banner (bool, optional):
-            whether to hide the Bokeh banner (default: False)
-
-        load_timeout (int, optional) :
-            Timeout in milliseconds when plots assume load timed out (default: 5000)
-
-        notebook_type (string, optional):
-            Notebook type (default: jupyter)
-
-    Returns:
-        None
-
-    .. note::
-        Generally, this should be called at the beginning of an interactive
-        session or the top of a script.
-
-    '''
-    # verify notebook_type first in curstate().output_notebook
-    curstate().output_notebook(notebook_type)
-    run_notebook_hook(notebook_type, "load", resources, verbose, hide_banner, load_timeout)
-
 def reset_output(state: State | None = None) -> None:
     ''' Clear the default state of all output modes.
 
@@ -130,7 +91,9 @@ def reset_output(state: State | None = None) -> None:
         None
 
     '''
-    curstate().reset()
+    (state or curstate()).reset()
+    from .notebook import _reset_notebook_resources
+    _reset_notebook_resources()
 
 #-----------------------------------------------------------------------------
 # Dev API

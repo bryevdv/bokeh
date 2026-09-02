@@ -10,15 +10,20 @@
 #-----------------------------------------------------------------------------
 from __future__ import annotations # isort:skip
 
+# Standard library imports
+import sys
+from types import ModuleType
+
+# Bokeh imports
+import bokeh.io.notebook as binb
+from tests.support.util.api import verify_all
+
 import pytest ; pytest
 
 #-----------------------------------------------------------------------------
 # Imports
 #-----------------------------------------------------------------------------
 
-# Bokeh imports
-import bokeh.io.notebook as binb
-from tests.support.util.api import verify_all
 
 # Module under test
 import bokeh.io as bi # isort:skip
@@ -32,12 +37,12 @@ ALL = (
     'export_png',
     'export_svg',
     'export_svgs',
-    'install_notebook_hook',
-    'push_notebook',
+    'NotebookApplication',
+    'notebook_info',
     'output_file',
-    'output_notebook',
     'reset_output',
     'save',
+    'serve',
     'show',
 )
 
@@ -47,11 +52,26 @@ ALL = (
 
 Test___all__ = verify_all(bi, ALL)
 
-def test_jupyter_notebook_hook_installed() -> None:
-    assert list(binb._HOOKS) == ["jupyter"]
-    assert binb._HOOKS["jupyter"]['load'] == binb.load_notebook
-    assert binb._HOOKS["jupyter"]['doc']  == binb.show_doc
-    assert binb._HOOKS["jupyter"]['app']  == binb.show_app
+def test_removed_manual_notebook_api_is_not_exposed() -> None:
+    assert not hasattr(bi, "push_notebook")
+    assert not hasattr(bi, "notebook_status")
+    assert not hasattr(binb, "push_notebook")
+    assert not hasattr(bi, "install_notebook_hook")
+    assert not hasattr(binb, "install_notebook_hook")
+    assert not hasattr(binb, "run_notebook_hook")
+    assert not hasattr(binb, "load_notebook")
+    assert not hasattr(binb, "show_app")
+    assert not hasattr(binb, "get_comms")
+    assert not hasattr(binb, "_HOOKS")
+
+def test_legacy_colab_import_hook_is_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(sys.modules, "google.colab._import_hooks._bokeh", ModuleType("_bokeh"))
+
+    install = getattr(binb, "install_notebook_hook")
+    install("jupyter", object(), object(), object(), overwrite=True)
+
+    assert not hasattr(binb, "_HOOKS")
+    assert not hasattr(binb, "run_notebook_hook")
 
 #-----------------------------------------------------------------------------
 # Dev API

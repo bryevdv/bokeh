@@ -40,7 +40,6 @@ ALL = (
     'gridplot',
     'markers',
     'output_file',
-    'output_notebook',
     'reset_output',
     'row',
     'Row',

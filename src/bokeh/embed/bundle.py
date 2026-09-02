@@ -180,10 +180,10 @@ def bundle_for_objs_and_resources(objs: Sequence[HasProps | Document] | None, re
 
     if resources is not None:
         components = list(resources.components)
-        if not use_widgets: components.remove("bokeh-widgets")
-        if not use_tables:  components.remove("bokeh-tables")
-        if not use_gl:      components.remove("bokeh-gl")
-        if not use_mathjax: components.remove("bokeh-mathjax")
+        if not use_widgets and "bokeh-widgets" in components: components.remove("bokeh-widgets")
+        if not use_tables and "bokeh-tables" in components:   components.remove("bokeh-tables")
+        if not use_gl and "bokeh-gl" in components:           components.remove("bokeh-gl")
+        if not use_mathjax and "bokeh-mathjax" in components: components.remove("bokeh-mathjax")
 
         resources = resources.clone(components=components)
 
