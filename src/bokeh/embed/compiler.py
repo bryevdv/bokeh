@@ -275,26 +275,30 @@ def _compiler_document(models: Sequence[Model], theme: ThemeSource) -> Iterator[
         (event, list(event_callbacks)) for event, event_callbacks in callbacks.items()
     )
 
+    compiler_theme: Theme | str | None = None
     if theme is FromCurdoc:
         from ..io import curdoc
-        document.theme = curdoc().theme
+        compiler_theme = curdoc().theme
     elif isinstance(theme, (Theme, str)):
-        document.theme = theme
+        compiler_theme = theme
     elif source is not None:
-        document.theme = source.theme
+        compiler_theme = source.theme
 
     staged = collect_models(document.config, models, document.callbacks.js_event_callbacks)
-    previous = [(model, model._temp_document) for model in staged]
+    previous = [(model, model._temp_document, model.themed_values()) for model in staged]
     try:
         for model in staged:
             document.models[model.id] = model
             model._temp_document = document
         document._roots = list(models)
+        if compiler_theme is not None:
+            document.theme = compiler_theme
         if settings.perform_document_validation():
             document.validate()
         yield document
     finally:
-        for model, previous_document in previous:
+        for model, previous_document, previous_theme in previous:
+            model.apply_theme(previous_theme or {})
             model._temp_document = previous_document
 
 

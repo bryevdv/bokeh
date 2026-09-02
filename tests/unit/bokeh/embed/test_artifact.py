@@ -281,6 +281,19 @@ def test_compiler_staging_preserves_complete_document_context() -> None:
     assert document.theme is theme
 
 
+def test_compiler_staging_applies_explicit_theme_and_restores_model() -> None:
+    button = Button(label="themed")
+    previous_theme = button.themed_values()
+    theme = Theme(json={"attrs": {"Button": {"button_type": "danger"}}})
+
+    artifact = embed(button, theme=theme)
+    decoded = Document.from_json(artifact.source["documents"][0])
+
+    assert decoded.roots[0].button_type == "danger"
+    assert button.button_type == "default"
+    assert button.themed_values() is previous_theme
+
+
 def test_compiler_staging_restores_ownership_after_serialization_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
