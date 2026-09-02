@@ -169,7 +169,6 @@ def file_html(
     template_variables: dict[str, Any] | None = None,
     theme: ThemeSource = None,
     suppress_callback_warning: bool = False,
-    _always_new: bool = False,
 ) -> str:
     ''' Return an HTML document that embeds Bokeh Model or Document objects.
 
@@ -217,7 +216,7 @@ def file_html(
     from .compiler import embed
 
     callback_policy = "suppress" if suppress_callback_warning else "warn"
-    artifact = embed(models, theme=theme, callback_policy=callback_policy, _always_new=_always_new)
+    artifact = embed(models, theme=theme, callback_policy=callback_policy)
     return artifact.page(
         resources=resources,
         title=title,

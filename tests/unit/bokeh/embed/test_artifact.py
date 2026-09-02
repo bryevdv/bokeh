@@ -42,11 +42,13 @@ from bokeh.embed import (
     server_session,
 )
 from bokeh.embed.resources import ExtensionRequirement, ResourceRequirements
+from bokeh.events import DocumentReady
 from bokeh.io import save
 from bokeh.model import Model
 from bokeh.models import Button, CustomJS, DataTable
 from bokeh.plotting import figure
 from bokeh.resources import CDN
+from bokeh.themes import Theme
 from bokeh.util.compiler import JavaScript
 
 FIXTURE_PATH = Path(__file__).parents[4] / "bokehjs" / "test" / "unit" / "embed" / "artifact_fixtures.json"
@@ -246,6 +248,58 @@ def test_named_inputs_preserve_order_and_restore_document_title() -> None:
 
     assert [root.key for root in artifact.roots] == ["one", "two"]
     assert document.title == "Original"
+
+
+def test_compiler_staging_does_not_change_model_document_ownership() -> None:
+    unattached = CustomJS(code="unattached")
+    first = CustomJS(code="first")
+    second = CustomJS(code="second")
+    first_document = Document()
+    second_document = Document()
+    first_document.add_root(first)
+    second_document.add_root(second)
+
+    embed({"unattached": unattached, "first": first, "second": second})
+
+    assert unattached.document is None
+    assert first.document is first_document
+    assert second.document is second_document
+
+
+def test_compiler_staging_preserves_complete_document_context() -> None:
+    theme = Theme(json={"attrs": {"Button": {"button_type": "danger"}}})
+    document = Document(title="Original", theme=theme)
+    document.config.color_scheme = "dark"
+    document.js_on_event(DocumentReady, CustomJS(code="ready"))
+    document.add_root(Button(label="themed"))
+
+    artifact = embed(document)
+    decoded = Document.from_json(artifact.source["documents"][0])
+
+    assert decoded.title == "Original"
+    assert decoded.config.color_scheme == "dark"
+    assert decoded.roots[0].button_type == "danger"
+    assert "callbacks" in artifact.source["documents"][0]
+    assert document.roots[0].document is document
+    assert document.theme is theme
+
+
+def test_compiler_staging_restores_ownership_after_serialization_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = CustomJS(code="failure")
+    document = Document()
+    document.add_root(model)
+
+    def fail(*_args: Any, **_kwargs: Any) -> None:
+        assert model.document is not document
+        raise RuntimeError("serialization failed")
+
+    monkeypatch.setattr(Document, "to_static_json", fail)
+    with pytest.raises(RuntimeError, match="serialization failed"):
+        embed(model)
+
+    assert model.document is document
 
 
 def test_compiler_rejects_empty_duplicate_and_python_callback_inputs() -> None:
