@@ -203,7 +203,7 @@ class BokehJSContent(CodeBlock):
         return js_source
 
     def get_code_language(self) -> tuple[str, str]:
-        # This is largely copied from bokeh_plot
+        # This is largely copied from bokeh_embed
         js_source = self.get_js_source()
         if self.options.get("include_html", False):
             resources = get_sphinx_resources(include_bokehjs_api=True)

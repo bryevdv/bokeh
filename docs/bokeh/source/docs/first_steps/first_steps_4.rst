@@ -32,7 +32,7 @@ to the ``theme`` property of your document:
    :language: python
    :emphasize-lines: 9
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_4_themes.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_4_themes.py
     :source-position: none
 
 You can also create your own themes to use across multiple plots. Bokeh's themes
@@ -63,7 +63,7 @@ calling the |figure| function:
    :language: python
    :emphasize-lines: 10-11
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_4_plot_size.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_4_plot_size.py
     :source-position: none
 
 Similar to :ref:`changing the design of an existing
@@ -74,7 +74,7 @@ any time after its creation:
    :language: python
    :emphasize-lines: 17,18
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_4_resize_plot.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_4_resize_plot.py
     :source-position: none
 
 Enabling responsive plot sizing
@@ -87,7 +87,7 @@ attribute :class:`~bokeh.models.plots.Plot.sizing_mode`:
    :language: python
    :emphasize-lines: 10,11
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_4_plot_size_responsive.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_4_plot_size_responsive.py
     :source-position: none
 
 .. seealso::
@@ -122,7 +122,7 @@ For example:
    :language: python
    :emphasize-lines: 19-21,24-26,29-30
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_4_axes_customizing.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_4_axes_customizing.py
     :source-position: none
 
 Defining axis ranges
@@ -142,7 +142,7 @@ you call the |figure| function:
    :language: python
    :emphasize-lines: 9
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_4_plot_axis_ranges.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_4_plot_axis_ranges.py
     :source-position: none
 
 Formatting axis ticks
@@ -152,7 +152,7 @@ You can format the text that appears alongside your axes with Bokeh's
 ``TickFormatter`` objects. Use these formatters to display currency
 symbols on your y-axis, for example:
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_4_tick_formatter.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_4_tick_formatter.py
     :source-position: none
 
 To display dollar amounts instead of just numbers on your y-axis, use the
@@ -197,7 +197,7 @@ switch to logarithmic axes:
    :language: python
    :emphasize-lines: 15,16
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_4_axes_logarithmic.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_4_axes_logarithmic.py
     :source-position: none
 
 Enabling datetime axes
@@ -214,7 +214,7 @@ To format the ticks of a ``DatetimeAxis``, use the
    :language: python
    :emphasize-lines: 15,28
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_4_datetime_axis.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_4_datetime_axis.py
     :source-position: none
 
 .. seealso::
@@ -243,7 +243,7 @@ the various ``grid_line`` properties:
    :language: python
    :emphasize-lines: 19,22,23
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_4_grid_lines.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_4_grid_lines.py
     :source-position: none
 
 .. seealso::
@@ -262,7 +262,7 @@ Bands and bounds are more examples of the annotations you learned about in
    :language: python
    :emphasize-lines: 19,20,23
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_4_bands.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_4_bands.py
     :source-position: none
 
 .. seealso::
@@ -288,7 +288,7 @@ use the various ``fill_color`` attributes of your |Plot| object:
    :language: python
    :emphasize-lines: 19-21
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_4_background.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_4_background.py
     :source-position: none
 
 .. seealso::
@@ -323,7 +323,7 @@ creating your figure:
 
     p.toolbar_location = "below"
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_4_toolbar.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_4_toolbar.py
     :source-position: none
 
 Deactivating and hiding the toolbar
@@ -345,7 +345,7 @@ To make your toolbar hide automatically, set
 With ``autohide`` set to ``True``, Bokeh will hide the toolbar unless the mouse
 is inside the plot area or you tap inside the plot area:
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_4_toolbar_autohide.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_4_toolbar_autohide.py
     :source-position: none
 
 Similarly, use the :class:`~bokeh.models.tools.Toolbar.logo` property of the
@@ -383,7 +383,7 @@ The ``tools`` attribute accepts a list of tools. This example enables only the
 This way, only the box zoom tool and the reset tool will be available in the
 toolbar:
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_4_tools.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_4_tools.py
     :source-position: none
 
 To change the available tools at any time after creating your figure,
@@ -402,7 +402,7 @@ In this example, you first include the box zoom tool and the reset tool when
 creating your function. Next, you add a pan zoom tool. This results in all three
 tools being available:
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_4_add_tools.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_4_add_tools.py
     :source-position: none
 
 .. seealso::
@@ -419,7 +419,7 @@ Adding tooltips
 Tooltips are little windows that appear when you hover your mouse over a
 data point or when you tap on a data point:
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_4_tooltips.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_4_tooltips.py
     :source-position: none
 
 Tooltips are based on the :class:`~bokeh.models.tools.HoverTool`. The hover tool

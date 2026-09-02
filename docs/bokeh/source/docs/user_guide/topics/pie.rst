@@ -19,7 +19,7 @@ The |wedge| glyph method renders a filled wedge. It accepts ``radius``,
 ``direction`` property determines whether to render clockwise (``"clock"``)
 or anti-clockwise (``"anticlock"``) between the start and end angles.
 
-.. bokeh-plot:: __REPO__/examples/topics/pie/wedge.py
+.. bokeh-embed:: __REPO__/examples/topics/pie/wedge.py
     :source-position: above
 
 Annular wedge
@@ -29,7 +29,7 @@ The |annular_wedge| glyph method is similar to |wedge| but leaves an inner
 portion of the wedge hollow. It accepts an ``inner_radius`` and
 ``outer_radius`` instead of just ``radius``.
 
-.. bokeh-plot:: __REPO__/examples/topics/pie/annular_wedge.py
+.. bokeh-embed:: __REPO__/examples/topics/pie/annular_wedge.py
     :source-position: above
 
 Annulus
@@ -43,7 +43,7 @@ Pie chart
 
 Use the wedge glyph for each of the pie slices to create a pie chart:
 
-.. bokeh-plot:: __REPO__/examples/topics/pie/pie.py
+.. bokeh-embed:: __REPO__/examples/topics/pie/pie.py
     :source-position: above
 
 Donut chart
@@ -52,7 +52,7 @@ Donut chart
 Donut charts are similar to pie charts, but employ annular wedges to
 partition a ring region:
 
-.. bokeh-plot:: __REPO__/examples/topics/pie/donut.py
+.. bokeh-embed:: __REPO__/examples/topics/pie/donut.py
     :source-position: above
 
 .. |annular_wedge| replace:: :func:`~bokeh.plotting.figure.annular_wedge`

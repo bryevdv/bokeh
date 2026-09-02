@@ -24,7 +24,7 @@ color information to the ``fill_color`` attribute:
    :language: python
    :emphasize-lines: 10,22
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_5_vectorize_color.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_5_vectorize_color.py
     :source-position: none
 
 In this example, the color of every circle corresponds to the y value of that
@@ -46,7 +46,7 @@ principle to the ``radius`` argument of your renderer:
    :language: python
    :emphasize-lines: 11-12, 26-27
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_5_vectorize_color_and_size.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_5_vectorize_color_and_size.py
     :source-position: none
 
 In this example, the color and diameter of every circle correspond to the y
@@ -74,7 +74,7 @@ Then assign your color mapper to the ``color`` parameter of your renderer:
    :language: python
    :emphasize-lines: 2,4,11,17
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_5_color_mapping.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_5_color_mapping.py
     :source-position: none
 
 .. seealso::

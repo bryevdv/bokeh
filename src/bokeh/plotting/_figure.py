@@ -339,7 +339,7 @@ class figure(Plot, GlyphAPI):
 
         Example:
 
-            .. bokeh-plot::
+            .. bokeh-embed::
                 :source-position: above
 
                 import numpy as np
@@ -795,7 +795,7 @@ class figure(Plot, GlyphAPI):
 
         Example:
 
-            .. bokeh-plot::
+            .. bokeh-embed::
                 :source-position: above
 
                 import cartopy.crs as ccrs
@@ -826,7 +826,7 @@ class figure(Plot, GlyphAPI):
 
         Example:
 
-            .. bokeh-plot::
+            .. bokeh-embed::
                 :source-position: above
 
                 import cartopy.crs as ccrs
@@ -862,7 +862,7 @@ class figure(Plot, GlyphAPI):
 
         Example:
 
-            .. bokeh-plot::
+            .. bokeh-embed::
                 :source-position: above
 
                 import cartopy.crs as ccrs
@@ -897,7 +897,7 @@ class figure(Plot, GlyphAPI):
 
         Example:
 
-            .. bokeh-plot::
+            .. bokeh-embed::
                 :source-position: above
 
                 import cartopy.crs as ccrs
@@ -932,7 +932,7 @@ class figure(Plot, GlyphAPI):
 
         Example:
 
-            .. bokeh-plot::
+            .. bokeh-embed::
                 :source-position: above
 
                 import cartopy.crs as ccrs
@@ -963,7 +963,7 @@ class figure(Plot, GlyphAPI):
 
         Example:
 
-            .. bokeh-plot::
+            .. bokeh-embed::
                 :source-position: above
 
                 import cartopy.crs as ccrs
@@ -994,7 +994,7 @@ class figure(Plot, GlyphAPI):
 
         Example:
 
-            .. bokeh-plot::
+            .. bokeh-embed::
                 :source-position: above
 
                 import cartopy.crs as ccrs
@@ -1025,7 +1025,7 @@ class figure(Plot, GlyphAPI):
 
         Example:
 
-            .. bokeh-plot::
+            .. bokeh-embed::
                 :source-position: above
 
                 import cartopy.crs as ccrs
@@ -1060,7 +1060,7 @@ class figure(Plot, GlyphAPI):
 
         Example:
 
-            .. bokeh-plot::
+            .. bokeh-embed::
                 :source-position: above
 
                 import cartopy.crs as ccrs

@@ -110,7 +110,7 @@ first, the third, and the fifth value of your original list:
    :language: python
    :emphasize-lines: 2,9,20
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_8_filter.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_8_filter.py
     :source-position: none
 
 .. seealso::

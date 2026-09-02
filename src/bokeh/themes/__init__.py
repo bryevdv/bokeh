@@ -12,32 +12,32 @@ Built-in themes
 CALIBER
 ~~~~~~~
 
-.. bokeh-plot:: __REPO__/examples/styling/themes/caliber.py
+.. bokeh-embed:: __REPO__/examples/styling/themes/caliber.py
 
 CARBON
 ~~~~~~
 
-.. bokeh-plot:: __REPO__/examples/styling/themes/carbon.py
+.. bokeh-embed:: __REPO__/examples/styling/themes/carbon.py
 
 DARK_MINIMAL
 ~~~~~~~~~~~~
 
-.. bokeh-plot:: __REPO__/examples/styling/themes/dark_minimal.py
+.. bokeh-embed:: __REPO__/examples/styling/themes/dark_minimal.py
 
 LIGHT_MINIMAL
 ~~~~~~~~~~~~~
 
-.. bokeh-plot:: __REPO__/examples/styling/themes/light_minimal.py
+.. bokeh-embed:: __REPO__/examples/styling/themes/light_minimal.py
 
 NIGHT_SKY
 ~~~~~~~~~
 
-.. bokeh-plot:: __REPO__/examples/styling/themes/night_sky.py
+.. bokeh-embed:: __REPO__/examples/styling/themes/night_sky.py
 
 CONTRAST
 ~~~~~~~~
 
-.. bokeh-plot:: __REPO__/examples/styling/themes/contrast.py
+.. bokeh-embed:: __REPO__/examples/styling/themes/contrast.py
 
 Theme
 -----

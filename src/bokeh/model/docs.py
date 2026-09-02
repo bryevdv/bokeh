@@ -118,7 +118,7 @@ _EXAMPLE_TEMPLATE = '''
 Example
 -------
 
-.. bokeh-plot:: __REPO__/{path}
+.. bokeh-embed:: __REPO__/{path}
     :source-position: below
 
 '''

@@ -101,7 +101,7 @@ def render_fragment(artifact: EmbedArtifact, *, resources: ResourcePolicy | Reso
         else _external_bootstrap(bootstrap_url, artifact.fingerprint, nonce=policy.nonce)
     )
     script = f"{payload}\n{bootstrap}"
-    html = "\n".join(filter(None, (_render_resources(resolved), *(mount.html for mount in mounts), script)))
+    html = "\n".join(filter(None, (render_resources(resolved), *(mount.html for mount in mounts), script)))
     build_fingerprint = _build_fingerprint(
         artifact, resolved, "fragment", {"bootstrap_url": bootstrap_url},
     )
@@ -126,7 +126,7 @@ def render_external(artifact: EmbedArtifact, *, payload_url: str,
         bootstrap = _external_bootstrap(
             bootstrap_url, artifact.fingerprint, payload_url=payload_url, nonce=policy.nonce,
         )
-    html = "\n".join(filter(None, (_render_resources(resolved), *(mount.html for mount in mounts), bootstrap)))
+    html = "\n".join(filter(None, (render_resources(resolved), *(mount.html for mount in mounts), bootstrap)))
     build_fingerprint = _build_fingerprint(
         artifact, resolved, "external", {"payload_url": payload_url, "bootstrap_url": bootstrap_url},
     )
@@ -154,8 +154,8 @@ def render_page(artifact: EmbedArtifact, *, resources: ResourcePolicy | Resource
     )
     plot_script = f"{payload}\n{bootstrap}"
     plot_div = "\n".join(mount.html for mount in mounts)
-    bokeh_js = _render_resources(resolved, kind="script")
-    bokeh_css = _render_resources(resolved, kind="style")
+    bokeh_js = render_resources(resolved, kind="script")
+    bokeh_css = render_resources(resolved, kind="style")
 
     context = dict(template_variables or {})
     context.update(
@@ -264,7 +264,8 @@ def _external_bootstrap(bootstrap_url: str, fingerprint: str, *, payload_url: st
     return f"<script {' '.join(attrs)}></script>"
 
 
-def _render_resources(resources: ResolvedResources, *, kind: str | None = None) -> str:
+def render_resources(resources: ResolvedResources, *, kind: str | None = None) -> str:
+    """Render a resolved resource set once, in dependency order."""
     return "\n".join(_render_resource(asset) for asset in resources.assets if kind is None or asset.kind == kind)
 
 
@@ -323,4 +324,5 @@ __all__ = (
     "render_fragment",
     "render_mimebundle",
     "render_page",
+    "render_resources",
 )

@@ -22,9 +22,11 @@ from unittest.mock import MagicMock, Mock, patch
 
 # Bokeh imports
 from bokeh.application.application import Application
+from bokeh.io._output_capture import capture_output
 from bokeh.io.doc import curdoc
 from bokeh.io.state import State, curstate
 from bokeh.models import ColumnDataSource, GlyphRenderer, Plot
+from bokeh.resources import Resources
 
 # Module under test
 import bokeh.io.showing as bis # isort:skip
@@ -73,6 +75,17 @@ def test_show_rejects_removed_notebook_handle() -> None:
     assert "notebook_url" not in parameters
     with pytest.raises(ValueError, match=r"Unexpected show.*notebook_handle"):
         bis.show(Plot(), notebook_handle=True)
+
+def test_show_preserves_context_local_output_capture() -> None:
+    plot = Plot()
+    resources = Resources(mode="inline")
+    with capture_output() as captured:
+        assert bis.show(plot, resources=resources) is None
+
+    assert len(captured.outputs) == 1
+    assert captured.outputs[0].action == "show"
+    assert captured.outputs[0].obj is plot
+    assert captured.outputs[0].kwargs == {"resources": resources}
 
 def test_show_rejects_removed_notebook_url() -> None:
     with pytest.raises(ValueError, match=r"Unexpected show.*notebook_url"):

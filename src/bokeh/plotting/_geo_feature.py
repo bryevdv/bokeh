@@ -68,7 +68,7 @@ def add_line_geometries(p, projection, geometries_collection, **line_kwargs):
 
     Example:
 
-        .. bokeh-plot::
+        .. bokeh-embed::
             :source-position: above
 
             import cartopy.crs as ccrs
@@ -108,7 +108,7 @@ def add_polygon_geometries(p, projection, geometries_collection, **poly_kwargs):
 
     Example:
 
-        .. bokeh-plot::
+        .. bokeh-embed::
             :source-position: above
 
             import cartopy.crs as ccrs
@@ -146,7 +146,7 @@ def add_borders(p, projection, scale="110m", **line_kwargs):
 
     Example:
 
-        .. bokeh-plot::
+        .. bokeh-embed::
             :source-position: above
 
             import cartopy.crs as ccrs
@@ -178,7 +178,7 @@ def add_coastlines(p, projection, scale="110m", **line_kwargs):
 
     Example:
 
-        .. bokeh-plot::
+        .. bokeh-embed::
             :source-position: above
 
             import cartopy.crs as ccrs
@@ -215,7 +215,7 @@ def add_land(p, projection, scale="110m", **poly_kwargs):
 
     Example:
 
-        .. bokeh-plot::
+        .. bokeh-embed::
             :source-position: above
 
             import cartopy.crs as ccrs
@@ -251,7 +251,7 @@ def add_lakes(p, projection, scale="110m", **poly_kwargs):
 
     Example:
 
-        .. bokeh-plot::
+        .. bokeh-embed::
             :source-position: above
 
             import cartopy.crs as ccrs
@@ -287,7 +287,7 @@ def add_ocean(p, projection, scale="110m", **poly_kwargs):
 
     Example:
 
-        .. bokeh-plot::
+        .. bokeh-embed::
             :source-position: above
 
             import cartopy.crs as ccrs
@@ -319,7 +319,7 @@ def add_rivers(p, projection, scale="110m", **line_kwargs):
 
     Example:
 
-        .. bokeh-plot::
+        .. bokeh-embed::
             :source-position: above
 
             import cartopy.crs as ccrs
@@ -351,7 +351,7 @@ def add_projection_boundary(p, projection, **line_kwargs):
 
     Example:
 
-        .. bokeh-plot::
+        .. bokeh-embed::
             :source-position: above
 
             import cartopy.crs as ccrs
@@ -384,7 +384,7 @@ def add_provinces(p, projection, scale="110m", **line_kwargs):
 
     Example:
 
-        .. bokeh-plot::
+        .. bokeh-embed::
             :source-position: above
 
             import cartopy.crs as ccrs
@@ -420,7 +420,7 @@ def add_states(p, projection, scale="110m", **poly_kwargs):
 
     Example:
 
-        .. bokeh-plot::
+        .. bokeh-embed::
             :source-position: above
 
             import cartopy.crs as ccrs

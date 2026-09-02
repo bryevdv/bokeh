@@ -15,7 +15,7 @@ Widgets are additional visual elements that you can include in your
 visualization. Use widgets to display additional information or to
 interactively control elements of your Bokeh document, for example:
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_9_widgets.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_9_widgets.py
     :source-position: none
 
 This Bokeh document combines a plot with three widgets:

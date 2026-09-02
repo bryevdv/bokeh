@@ -231,7 +231,7 @@ various elements of your visualization, such as axes, grids, and tools.
 Below is an example of |bokeh.plotting|, along with the resulting
 plot:
 
-.. bokeh-plot::
+.. bokeh-embed::
     :source-position: above
 
     from bokeh.plotting import figure, output_file, show

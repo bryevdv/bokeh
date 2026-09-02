@@ -48,7 +48,7 @@ to the ``theme`` property of your document.
 
 For example:
 
-.. bokeh-plot::
+.. bokeh-embed::
     :source-position: above
 
     from bokeh.io import curdoc

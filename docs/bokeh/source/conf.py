@@ -46,7 +46,7 @@ extensions = [
     "sphinx.ext.napoleon",
     "sphinx.ext.intersphinx",
     "sphinx.ext.viewcode",
-    "bokeh.sphinxext.bokeh_plot",
+    "bokeh.sphinxext.bokeh_embed",
     "bokeh.sphinxext._internal.bokeh_autodoc",
     "bokeh.sphinxext._internal.bokeh_dataframe",
     "bokeh.sphinxext._internal.bokeh_color",
@@ -115,6 +115,8 @@ bokeh_example_subdirs = [
 ]
 
 bokeh_missing_google_api_key_ok = False
+bokeh_embed_callback_policy = "suppress"
+bokeh_embed_resources = os.environ.get("BOKEH_EMBED_RESOURCES")
 
 if "GOOGLE_API_KEY" not in os.environ:
     print("GOOGLE_API_KEY not found in environment")

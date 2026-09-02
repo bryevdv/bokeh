@@ -31,7 +31,7 @@ Use the properties of the |Legend| object to customize the legend. For example:
    :language: python
    :emphasize-lines: 16,24,27,30-32,35-39
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_3_legend.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_3_legend.py
     :source-position: none
 
 .. seealso::
@@ -61,7 +61,7 @@ There are various ways to style the text for your headline. For example:
    :language: python
    :emphasize-lines: 8,14,17,20-23
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_3_title.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_3_title.py
     :source-position: none
 
 .. seealso::
@@ -82,7 +82,7 @@ to read. For more information on the various kinds of annotations, see
 One example are box annotations. You can use box annotations to highlight
 certain areas of your plot:
 
-.. bokeh-plot:: docs/first_steps/examples/first_steps_3_box_annotation.py
+.. bokeh-embed:: docs/first_steps/examples/first_steps_3_box_annotation.py
     :source-position: none
 
 To add box annotations to your plot, you first need to import the

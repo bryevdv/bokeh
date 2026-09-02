@@ -31,7 +31,7 @@ The content of a ``Tooltip`` is defined with its ``content`` property.
 
 This content either can be either a plaintext string or an HTML object:
 
-.. bokeh-plot:: __REPO__/examples/interaction/tooltips/tooltip_content.py
+.. bokeh-embed:: __REPO__/examples/interaction/tooltips/tooltip_content.py
     :source-position: above
 
 Hover over or tap the "?" Symbol next to the inputs' titles to see the
@@ -58,7 +58,7 @@ that takes a :class:`~bokeh.models.Tooltip` object as its value. The tooltips
 defined by the ``description`` property are displayed when a user hovers or
 taps the "?" symbol next to the input widget's title:
 
-.. bokeh-plot:: __REPO__/examples/interaction/tooltips/tooltip_description.py
+.. bokeh-embed:: __REPO__/examples/interaction/tooltips/tooltip_description.py
     :source-position: above
 
 .. note::
@@ -92,7 +92,7 @@ Currently, the following input widgets support tooltips directly:
     reference the same instance of a Tooltip, only the first one will be
     displayed:
 
-    .. bokeh-plot::
+    .. bokeh-embed::
         :source-position: above
 
         from bokeh.models import Tooltip, AutocompleteInput, ColorPicker
@@ -118,7 +118,7 @@ doesn't have built-in support for tooltips, you can use the
 button with a "?" symbol. When the button is clicked or hovered over, the
 ``Tooltip`` object passed to the HelpButton's ``tooltip`` property is displayed.
 
-.. bokeh-plot:: __REPO__/examples/interaction/tooltips/tooltip_helpbutton.py
+.. bokeh-embed:: __REPO__/examples/interaction/tooltips/tooltip_helpbutton.py
     :source-position: above
 
 See :ref:`ug_interaction_widgets_examples_helpbutton` for more

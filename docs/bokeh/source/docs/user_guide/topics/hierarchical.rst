@@ -20,7 +20,7 @@ Tee example below shows how a treemap plot can be created using the Bokeh
 :func:`~bokeh.plotting.figure.block` function together with the third-party
 `Squarify`_ library.
 
-.. bokeh-plot:: __REPO__/examples/topics/hierarchical/treemap.py
+.. bokeh-embed:: __REPO__/examples/topics/hierarchical/treemap.py
     :source-position: above
 
 .. _ug_topics_hierarchical_crosstab:
@@ -33,7 +33,7 @@ of a whole and each other. The example below shows an adjacent bar chart
 applied to a crosstab of sample superstore data. This example is more
 involved due to more extensive styling and inline labeling.
 
-.. bokeh-plot:: __REPO__/examples/topics/hierarchical/crosstab.py
+.. bokeh-embed:: __REPO__/examples/topics/hierarchical/crosstab.py
     :source-position: above
 
 .. _Squarify: https://github.com/laserson/squarify
@@ -46,4 +46,4 @@ worth mentioning here that Bokeh does have one widget that is specifically
 intended for presenting a view of hierarchical data. A simple example of using
 the ``DataCube`` is shown below.
 
-.. bokeh-plot:: __REPO__/examples/interaction/widgets/data_cube.py
+.. bokeh-embed:: __REPO__/examples/interaction/widgets/data_cube.py

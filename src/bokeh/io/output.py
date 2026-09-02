@@ -24,6 +24,7 @@ log = logging.getLogger(__name__)
 from typing import TYPE_CHECKING
 
 # Bokeh imports
+from ._output_capture import record_output
 from .state import curstate
 
 if TYPE_CHECKING:
@@ -77,6 +78,9 @@ def output_file(filename: PathLike, title: str = "Bokeh Plot",
         |show| outside an interactive notebook.
 
     '''
+    if record_output("output_file", filename, title=title, mode=mode, root_dir=root_dir):
+        return
+
     curstate().output_file(
         filename,
         title=title,
@@ -91,6 +95,8 @@ def reset_output(state: State | None = None) -> None:
         None
 
     '''
+    if record_output("reset_output", state):
+        return
     (state or curstate()).reset()
     from .notebook import _reset_notebook_resources
     _reset_notebook_resources()
