@@ -138,6 +138,20 @@ function same_items<T>(left: readonly T[], right: readonly T[]): boolean {
   return left.length == right.length && left.every((item, index) => item == right[index])
 }
 
+type ControlledMountOptions = Omit<MountOptions, "targets">
+
+function controlled_mount_options(options: MountOptions | undefined): ControlledMountOptions {
+  const controlled = {...options}
+  delete controlled.targets
+  return controlled
+}
+
+function same_mount_options(left: ControlledMountOptions, right: ControlledMountOptions): boolean {
+  const left_keys = Object.keys(left) as (keyof ControlledMountOptions)[]
+  const right_keys = Object.keys(right)
+  return left_keys.length == right_keys.length && left_keys.every((key) => left[key] == right[key])
+}
+
 /** Coordinates one Bokeh document whose roots render into independent framework targets. */
 export class DocumentMountController {
   private readonly _controller = new MountController()
@@ -146,7 +160,7 @@ export class DocumentMountController {
   private _request: MountRequest = {}
   private _active_models: readonly BokehRootModel[] = []
   private _active_targets = new Map<BokehRootModel, BokehTarget>()
-  private _active_signal: AbortSignal | undefined
+  private _active_mount_options: ControlledMountOptions = {}
   private _scheduled = false
 
   get mounted(): BokehMount | null {
@@ -194,7 +208,7 @@ export class DocumentMountController {
     this._targets.clear()
     this._active_models = []
     this._active_targets.clear()
-    this._active_signal = undefined
+    this._active_mount_options = {}
     this._controller.dispose()
   }
 
@@ -213,7 +227,7 @@ export class DocumentMountController {
     if (this._models.length == 0) {
       this._active_models = []
       this._active_targets.clear()
-      this._active_signal = undefined
+      this._active_mount_options = {}
       this._controller.dispose()
       return
     }
@@ -226,9 +240,9 @@ export class DocumentMountController {
       return
     }
 
-    const signal = this._request.mountOptions?.signal
+    const mount_options = controlled_mount_options(this._request.mountOptions)
     const same_models = same_items(this._models, this._active_models)
-    if (same_models && signal == this._active_signal) {
+    if (same_models && same_mount_options(mount_options, this._active_mount_options)) {
       const mounted = this._controller.mounted
       if (mounted != null) {
         for (const model of this._models) {
@@ -247,7 +261,7 @@ export class DocumentMountController {
 
     this._active_models = [...this._models]
     this._active_targets = new Map(this._targets)
-    this._active_signal = signal
+    this._active_mount_options = mount_options
     const models = new Map(this._models.map((model) => [model.id, model]))
     const targets = new Map([...this._targets].map(([model, target]) => [model.id, target]))
     void this._controller.start(models, undefined, {
@@ -257,7 +271,7 @@ export class DocumentMountController {
       onError: (error) => {
         this._active_models = []
         this._active_targets.clear()
-        this._active_signal = undefined
+        this._active_mount_options = {}
         this._request.onError?.(error)
       },
     })
