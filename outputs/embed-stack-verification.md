@@ -294,7 +294,7 @@ Lifecycle conflict resolutions are intentional. All replayed and new BokehJS mod
 
 `Document.to_json()` remains canonical and ID-full in both runtimes. The new `Document.to_static_json()` is the explicit low-level compiler seam: it uses graph-minimal IDs and accepts an additional externally referenced model set without changing canonical or patch/session behavior. Static roots are described by logical key plus document/root ordinal in the shared fixture, then resolved into EMBED 02's keyed `MountSource`; roots do not retain IDs merely for DOM mounting. The legacy standalone bridge calls the same seam but temporarily requests root IDs because `RenderItem` still requires them; EMBED 04 must not inherit that compatibility requirement.
 
-The single fixture payload in `bokehjs/test/unit/document/minimal_ids_fixture.ts` is consumed directly by both Python and BokehJS tests. It covers anonymous models, shared identity, a two-model cycle, deterministic map/root order, two logical root keys, Python serialization, Python and BokehJS deserialization, keyed `MountSource` normalization, canonical serialization, and live patch IDs.
+The single fixture payload in `bokehjs/test/unit/document/minimal_ids_fixture.json` is consumed directly by both Python and BokehJS tests. It covers anonymous models, shared identity, a two-model cycle, deterministic map/root order, two logical root keys, Python serialization, Python and BokehJS deserialization, keyed `MountSource` normalization, canonical serialization, and live patch IDs.
 
 Validation through the dedicated `bokeh-embed` environment:
 
