@@ -36,6 +36,7 @@
   "jupyterlab": {
     "extension": true,
     "outputDir": "../labextension",
+    "webpackConfig": "webpack.labextension.config.js",
     "sharedPackages": {
       "@jupyterlab/services": {
         "bundled": false,
