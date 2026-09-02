@@ -39,7 +39,7 @@ export class CrosshairToolView extends InspectToolView {
       const {dimensions, line_color, line_alpha, line_width} = this.model
 
       function span(dimension: Dimension) {
-        return new Span({
+        return Span.create({
           dimension,
           location_units: "canvas",
           level: "overlay",
@@ -143,7 +143,7 @@ export class CrosshairTool extends InspectTool {
   declare properties: CrosshairTool.Props
   declare __view_type__: CrosshairToolView
 
-  constructor(attrs?: Partial<CrosshairTool.Attrs>) {
+  protected constructor(attrs?: Partial<CrosshairTool.Attrs>) {
     super(attrs)
   }
 
@@ -158,9 +158,9 @@ export class CrosshairTool extends InspectTool {
       line_alpha: [ Alpha, 1 ],
     }))
 
-    this.register_alias("crosshair", () => new CrosshairTool())
-    this.register_alias("xcrosshair", () => new CrosshairTool({dimensions: "width"}))
-    this.register_alias("ycrosshair", () => new CrosshairTool({dimensions: "height"}))
+    this.register_alias("crosshair", () => CrosshairTool.create())
+    this.register_alias("xcrosshair", () => CrosshairTool.create({dimensions: "width"}))
+    this.register_alias("ycrosshair", () => CrosshairTool.create({dimensions: "height"}))
   }
 
   override tool_name = "Crosshair"

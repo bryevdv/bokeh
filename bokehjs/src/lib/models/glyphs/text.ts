@@ -284,7 +284,7 @@ export class TextView extends XYGlyphView {
       }
     }
 
-    return new Selection({indices})
+    return Selection.create({indices})
   }
 
   rect_i(i: number): Rect {
@@ -382,7 +382,7 @@ export class Text extends XYGlyph {
   declare properties: Text.Props
   declare __view_type__: TextView
 
-  constructor(attrs?: Partial<Text.Attrs>) {
+  protected constructor(attrs?: Partial<Text.Attrs>) {
     super(attrs)
   }
 

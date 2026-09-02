@@ -22,7 +22,7 @@ export class TimedeltaAxis extends ContinuousAxis {
   declare ticker: TimedeltaTicker
   declare formatter: TimedeltaTickFormatter
 
-  constructor(attrs?: Partial<TimedeltaAxis.Attrs>) {
+  protected constructor(attrs?: Partial<TimedeltaAxis.Attrs>) {
     super(attrs)
   }
 
@@ -30,8 +30,8 @@ export class TimedeltaAxis extends ContinuousAxis {
     this.prototype.default_view = TimedeltaAxisView
 
     this.override<TimedeltaAxis.Props>({
-      ticker:    () => new TimedeltaTicker(),
-      formatter: () => new TimedeltaTickFormatter(),
+      ticker:    () => TimedeltaTicker.create(),
+      formatter: () => TimedeltaTickFormatter.create(),
     })
   }
 }

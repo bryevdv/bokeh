@@ -27,7 +27,7 @@ export class ZoomOutTool extends ZoomBaseTool {
 
   maintain_focus: boolean
 
-  constructor(attrs?: Partial<ZoomBaseTool.Attrs>) {
+  protected constructor(attrs?: Partial<ZoomBaseTool.Attrs>) {
     super(attrs)
   }
 
@@ -38,9 +38,9 @@ export class ZoomOutTool extends ZoomBaseTool {
       maintain_focus: [ Bool, true ],
     }))
 
-    this.register_alias("zoom_out", () => new ZoomOutTool({dimensions: "both"}))
-    this.register_alias("xzoom_out", () => new ZoomOutTool({dimensions: "width"}))
-    this.register_alias("yzoom_out", () => new ZoomOutTool({dimensions: "height"}))
+    this.register_alias("zoom_out", () => ZoomOutTool.create({dimensions: "both"}))
+    this.register_alias("xzoom_out", () => ZoomOutTool.create({dimensions: "width"}))
+    this.register_alias("yzoom_out", () => ZoomOutTool.create({dimensions: "height"}))
   }
 
   override tool_name = "Zoom Out"

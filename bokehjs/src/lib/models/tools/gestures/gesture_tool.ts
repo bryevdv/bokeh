@@ -24,7 +24,7 @@ export abstract class GestureTool extends Tool {
   declare properties: GestureTool.Props
   declare __view_type__: GestureToolView
 
-  constructor(attrs?: Partial<GestureTool.Attrs>) {
+  protected constructor(attrs?: Partial<GestureTool.Attrs>) {
     super(attrs)
   }
 
@@ -33,6 +33,6 @@ export abstract class GestureTool extends Tool {
   abstract override readonly event_type: EventType | EventType[]
 
   override tool_button(): OnOffButton {
-    return new OnOffButton({tool: this})
+    return OnOffButton.create({tool: this})
   }
 }

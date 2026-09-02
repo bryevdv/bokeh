@@ -82,7 +82,7 @@ export class HelpButton extends AbstractButton {
   declare properties: HelpButton.Props
   declare __view_type__: HelpButtonView
 
-  constructor(attrs?: Partial<HelpButton.Attrs>) {
+  protected constructor(attrs?: Partial<HelpButton.Attrs>) {
     super(attrs)
   }
 
@@ -95,7 +95,7 @@ export class HelpButton extends AbstractButton {
 
     this.override<HelpButton.Props>({
       label: "",
-      icon: () => new BuiltinIcon({icon_name: "help", size: 18}),
+      icon: () => BuiltinIcon.create({icon_name: "help", size: 18}),
       button_type: "default",
     })
   }

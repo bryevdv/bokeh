@@ -218,7 +218,7 @@ export class CategoricalAxis extends Axis {
   declare ticker: CategoricalTicker
   declare formatter: CategoricalTickFormatter
 
-  constructor(attrs?: Partial<CategoricalAxis.Attrs>) {
+  protected constructor(attrs?: Partial<CategoricalAxis.Attrs>) {
     super(attrs)
   }
 
@@ -237,8 +237,8 @@ export class CategoricalAxis extends Axis {
     }))
 
     this.override<CategoricalAxis.Props>({
-      ticker: () => new CategoricalTicker(),
-      formatter: () => new CategoricalTickFormatter(),
+      ticker: () => CategoricalTicker.create(),
+      formatter: () => CategoricalTickFormatter.create(),
       separator_line_color: "lightgrey",
       separator_line_width: 2,
       group_text_font_style: "bold",

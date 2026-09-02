@@ -220,7 +220,7 @@ export class Arrow extends DataAnnotation {
   declare properties: Arrow.Props
   declare __view_type__: ArrowView
 
-  constructor(attrs?: Partial<Arrow.Attrs>) {
+  protected constructor(attrs?: Partial<Arrow.Attrs>) {
     super(attrs)
   }
 
@@ -237,7 +237,7 @@ export class Arrow extends DataAnnotation {
       x_end:       [ p.XCoordinateSpec, {field: "x_end"} ],
       y_end:       [ p.YCoordinateSpec, {field: "y_end"} ],
       end_units:   [ CoordinateUnits, "data" ],
-      end:         [ Nullable(Ref(ArrowHead)), () => new OpenHead() ],
+      end:         [ Nullable(Ref(ArrowHead)), () => OpenHead.create() ],
     }))
   }
 }

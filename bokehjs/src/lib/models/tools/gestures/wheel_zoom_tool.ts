@@ -266,7 +266,7 @@ export class WheelZoomTool extends GestureTool {
   declare properties: WheelZoomTool.Props
   declare __view_type__: WheelZoomToolView
 
-  constructor(attrs?: Partial<WheelZoomTool.Attrs>) {
+  protected constructor(attrs?: Partial<WheelZoomTool.Attrs>) {
     super(attrs)
   }
 
@@ -287,9 +287,9 @@ export class WheelZoomTool extends GestureTool {
       modifiers:      [ Modifiers, {} ],
     }))
 
-    this.register_alias("wheel_zoom", () => new WheelZoomTool({dimensions: "both"}))
-    this.register_alias("xwheel_zoom", () => new WheelZoomTool({dimensions: "width"}))
-    this.register_alias("ywheel_zoom", () => new WheelZoomTool({dimensions: "height"}))
+    this.register_alias("wheel_zoom", () => WheelZoomTool.create({dimensions: "both"}))
+    this.register_alias("xwheel_zoom", () => WheelZoomTool.create({dimensions: "width"}))
+    this.register_alias("ywheel_zoom", () => WheelZoomTool.create({dimensions: "height"}))
   }
 
   override tool_name = "Wheel Zoom"

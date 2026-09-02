@@ -146,7 +146,7 @@ export class GraphRenderer extends DataRenderer {
   declare properties: GraphRenderer.Props
   declare __view_type__: GraphRendererView
 
-  constructor(attrs?: Partial<GraphRenderer.Attrs>) {
+  protected constructor(attrs?: Partial<GraphRenderer.Attrs>) {
     super(attrs)
   }
 
@@ -157,8 +157,8 @@ export class GraphRenderer extends DataRenderer {
       layout_provider:   [ Ref(LayoutProvider) ],
       node_renderer:     [ Ref(GlyphRenderer<XYGlyph>) ],
       edge_renderer:     [ Ref(GlyphRenderer<XsYsGlyph>) ],
-      selection_policy:  [ Ref(GraphHitTestPolicy), () => new NodesOnly() ],
-      inspection_policy: [ Ref(GraphHitTestPolicy), () => new NodesOnly() ],
+      selection_policy:  [ Ref(GraphHitTestPolicy), () => NodesOnly.create() ],
+      inspection_policy: [ Ref(GraphHitTestPolicy), () => NodesOnly.create() ],
     }))
   }
 

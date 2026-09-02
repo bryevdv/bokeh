@@ -162,7 +162,7 @@ export class ToolbarView extends UIElementView {
     }
     return Array.from(grouped.values(), (group) => {
       if (group.length > 1) {
-        const proxy = new ToolGroup({tools: group})
+        const proxy = ToolGroup.create({tools: group})
         this._our_proxies.push(proxy)
         return proxy
       } else {
@@ -422,7 +422,7 @@ export class Toolbar extends UIElement {
   declare properties: Toolbar.Props
   declare __view_type__: ToolbarView
 
-  constructor(attrs?: Partial<Toolbar.Attrs>) {
+  protected constructor(attrs?: Partial<Toolbar.Attrs>) {
     super(attrs)
   }
 
@@ -483,10 +483,10 @@ export class Toolbar extends UIElement {
   }
 
   protected _init_tools(): void {
-    type AbstractConstructor<T, Args extends any[] = any[]> = abstract new (...args: Args) => T
+    type ClassLike<T> = Function & {prototype: T}
 
     const visited = new Set<ToolLike<Tool>>()
-    function isa<A extends Tool>(tool: ToolLike<Tool>, type: AbstractConstructor<A>): tool is ToolLike<A> {
+    function isa<A extends Tool>(tool: ToolLike<Tool>, type: ClassLike<A>): tool is ToolLike<A> {
       const is = tool.underlying instanceof type
       if (is) {
         visited.add(tool)
@@ -686,7 +686,7 @@ export class Toolbar extends UIElement {
       .filter((group) => group.length != 0)
       .map((group) => group.map((tool) => tool.menu_item()))
 
-    const items = [...join(entries, () => new DividerItem())]
-    return new Menu({items})
+    const items = [...join(entries, () => DividerItem.create())]
+    return Menu.create({items})
   }
 }

@@ -120,7 +120,7 @@ export class AnnulusView extends XYGlyphView {
       }
     }
 
-    return new Selection({indices})
+    return Selection.create({indices})
   }
 
   override draw_legend_for_index(ctx: Context2d, {x0, y0, x1, y1}: Rect, index: number): void {
@@ -163,7 +163,7 @@ export class Annulus extends XYGlyph {
   declare properties: Annulus.Props
   declare __view_type__: AnnulusView
 
-  constructor(attrs?: Partial<Annulus.Attrs>) {
+  protected constructor(attrs?: Partial<Annulus.Attrs>) {
     super(attrs)
   }
 

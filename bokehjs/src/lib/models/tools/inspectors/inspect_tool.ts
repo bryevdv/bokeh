@@ -27,7 +27,7 @@ export abstract class InspectTool extends Tool {
   declare properties: InspectTool.Props
   declare __view_type__: InspectToolView
 
-  constructor(attrs?: Partial<InspectTool.Attrs>) {
+  protected constructor(attrs?: Partial<InspectTool.Attrs>) {
     super(attrs)
   }
 
@@ -44,6 +44,6 @@ export abstract class InspectTool extends Tool {
   override event_type = "move" as "move"
 
   override tool_button(): OnOffButton {
-    return new OnOffButton({tool: this})
+    return OnOffButton.create({tool: this})
   }
 }

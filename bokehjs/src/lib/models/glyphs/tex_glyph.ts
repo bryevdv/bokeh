@@ -24,7 +24,7 @@ export class TeXGlyphView extends MathTextGlyphView {
       }
       return obj
     } else {
-      return new TeX({text, macros, inline: display == "inline"})
+      return TeX.create({text, macros, inline: display == "inline"})
     }
   }
 }
@@ -48,7 +48,7 @@ export class TeXGlyph extends MathTextGlyph {
   declare properties: TeXGlyph.Props
   declare __view_type__: TeXGlyphView
 
-  constructor(attrs?: Partial<TeXGlyph.Attrs>) {
+  protected constructor(attrs?: Partial<TeXGlyph.Attrs>) {
     super(attrs)
   }
 

@@ -16,7 +16,7 @@ export class BoxNodes {
 
   private _node(symbol: BoxSymbol): Node {
     const {target, frozen} = this
-    const node = new Node({target, symbol})
+    const node = Node.create({target, symbol})
     if (frozen) {
       this[`_${symbol}`] = node
     }
@@ -62,7 +62,7 @@ export interface Node extends Node.Attrs {}
 export class Node extends Coordinate {
   declare properties: Node.Props
 
-  constructor(attrs?: Partial<Node.Attrs>) {
+  protected constructor(attrs?: Partial<Node.Attrs>) {
     super(attrs)
   }
 

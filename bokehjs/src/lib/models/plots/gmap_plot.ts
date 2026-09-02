@@ -22,7 +22,7 @@ export interface MapOptions extends MapOptions.Attrs {}
 export class MapOptions extends Model {
   declare properties: MapOptions.Props
 
-  constructor(attrs?: Partial<MapOptions.Attrs>) {
+  protected constructor(attrs?: Partial<MapOptions.Attrs>) {
     super(attrs)
   }
 
@@ -51,7 +51,7 @@ export interface GMapOptions extends GMapOptions.Attrs {}
 export class GMapOptions extends MapOptions {
   declare properties: GMapOptions.Props
 
-  constructor(attrs?: Partial<GMapOptions.Attrs>) {
+  protected constructor(attrs?: Partial<GMapOptions.Attrs>) {
     super(attrs)
   }
 
@@ -82,7 +82,7 @@ export class GMapPlot extends Plot {
 
   override use_map = true
 
-  constructor(attrs?: Partial<GMapPlot.Attrs>) {
+  protected constructor(attrs?: Partial<GMapPlot.Attrs>) {
     super(attrs)
   }
 
@@ -96,8 +96,8 @@ export class GMapPlot extends Plot {
     }))
 
     this.override<GMapPlot.Props>({
-      x_range: () => new Range1d(),
-      y_range: () => new Range1d(),
+      x_range: () => Range1d.create(),
+      y_range: () => Range1d.create(),
       background_fill_alpha: 0.0,
     })
   }

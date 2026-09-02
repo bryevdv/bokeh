@@ -282,6 +282,18 @@ def make_id() -> ID:
     else:
         return make_globally_unique_id()
 
+def _reserve_id(id: ID) -> None:
+    '''Prevent generated simple IDs from colliding with an explicit ID.'''
+    global _simple_id
+
+    if not id.startswith("p") or not id[1:].isdigit():
+        return
+
+    value = int(id[1:])
+    with _simple_id_lock:
+        if value > _simple_id:
+            _simple_id = value
+
 def make_globally_unique_id() -> ID:
     ''' Return a globally unique UUID.
 

@@ -101,7 +101,7 @@ export class MultiLineView extends GlyphView {
       }
     }
 
-    return new Selection({
+    return Selection.create({
       indices: [...hits.keys()],
       multiline_indices: hits,
     })
@@ -134,7 +134,7 @@ export class MultiLineView extends GlyphView {
       }
     }
 
-    return new Selection({
+    return Selection.create({
       indices: [...hits.keys()],
       multiline_indices: hits,
     })
@@ -180,7 +180,7 @@ export class MultiLine extends Glyph {
   declare properties: MultiLine.Props
   declare __view_type__: MultiLineView
 
-  constructor(attrs?: Partial<MultiLine.Attrs>) {
+  protected constructor(attrs?: Partial<MultiLine.Attrs>) {
     super(attrs)
   }
 

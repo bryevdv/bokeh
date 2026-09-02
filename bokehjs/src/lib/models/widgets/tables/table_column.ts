@@ -105,7 +105,7 @@ export class TableColumn extends Model {
   declare properties: TableColumn.Props
   declare __view_type__: TableColumnView
 
-  constructor(attrs?: Partial<TableColumn.Attrs>) {
+  protected constructor(attrs?: Partial<TableColumn.Attrs>) {
     super(attrs)
   }
 
@@ -116,8 +116,8 @@ export class TableColumn extends Model {
       field:        [ Str ],
       title:        [ Nullable(Or(Str, Ref(HTML))), null ],
       width:        [ Float, 300 ],
-      formatter:    [ Ref(CellFormatter), () => new StringFormatter() ],
-      editor:       [ Ref(CellEditor), () => new StringEditor() ],
+      formatter:    [ Ref(CellFormatter), () => StringFormatter.create() ],
+      editor:       [ Ref(CellEditor), () => StringEditor.create() ],
       sortable:     [ Bool, true ],
       default_sort: [ Sort, "ascending" ],
       visible:      [ Bool, true ],

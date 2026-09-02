@@ -41,7 +41,7 @@ export class LogAxis extends ContinuousAxis {
   declare ticker: LogTicker
   declare formatter: LogTickFormatter
 
-  constructor(attrs?: Partial<LogAxis.Attrs>) {
+  protected constructor(attrs?: Partial<LogAxis.Attrs>) {
     super(attrs)
   }
 
@@ -49,8 +49,8 @@ export class LogAxis extends ContinuousAxis {
     this.prototype.default_view = LogAxisView
 
     this.override<LogAxis.Props>({
-      ticker:    () => new LogTicker(),
-      formatter: () => new LogTickFormatter(),
+      ticker:    () => LogTicker.create(),
+      formatter: () => LogTickFormatter.create(),
     })
   }
 }

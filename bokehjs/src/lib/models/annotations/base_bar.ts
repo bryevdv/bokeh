@@ -67,7 +67,7 @@ export abstract class BaseBar extends Annotation {
   declare properties: BaseBar.Props
   declare __view_type__: BaseBarView
 
-  constructor(attrs?: Partial<BaseBar.Attrs>) {
+  protected constructor(attrs?: Partial<BaseBar.Attrs>) {
     super(attrs)
   }
 
@@ -98,7 +98,7 @@ export abstract class BaseBar extends Annotation {
       ticker:                [ Or(Ref(FixedTicker), Auto), "auto" ],
       formatter:             [ Or(Ref(TickFormatter), Auto), "auto" ],
       major_label_overrides: [ LabelOverrides, new Map() ],
-      major_label_policy:    [ Ref(LabelingPolicy), () => new NoOverlap() ],
+      major_label_policy:    [ Ref(LabelingPolicy), () => NoOverlap.create() ],
       label_standoff:        [ Float, 5 ],
       major_tick_in:         [ Float, 5 ],
       major_tick_out:        [ Float, 0 ],

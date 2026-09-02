@@ -24,7 +24,7 @@ export interface GraphHitTestPolicy extends Model.Attrs {}
 export abstract class GraphHitTestPolicy extends Model {
   declare properties: GraphHitTestPolicy.Props
 
-  constructor(attrs?: Partial<GraphHitTestPolicy.Attrs>) {
+  protected constructor(attrs?: Partial<GraphHitTestPolicy.Attrs>) {
     super(attrs)
   }
 
@@ -60,7 +60,7 @@ export interface EdgesOnly extends EdgesOnly.Attrs {}
 export class EdgesOnly extends GraphHitTestPolicy {
   declare properties: EdgesOnly.Props
 
-  constructor(attrs?: Partial<EdgesOnly.Attrs>) {
+  protected constructor(attrs?: Partial<EdgesOnly.Attrs>) {
     super(attrs)
   }
 
@@ -108,7 +108,7 @@ export interface NodesOnly extends NodesOnly.Attrs {}
 export class NodesOnly extends GraphHitTestPolicy {
   declare properties: NodesOnly.Props
 
-  constructor(attrs?: Partial<NodesOnly.Attrs>) {
+  protected constructor(attrs?: Partial<NodesOnly.Attrs>) {
     super(attrs)
   }
 
@@ -156,7 +156,7 @@ export interface NodesAndLinkedEdges extends NodesAndLinkedEdges.Attrs {}
 export class NodesAndLinkedEdges extends GraphHitTestPolicy {
   declare properties: NodesAndLinkedEdges.Props
 
-  constructor(attrs?: Partial<NodesAndLinkedEdges.Attrs>) {
+  protected constructor(attrs?: Partial<NodesAndLinkedEdges.Attrs>) {
     super(attrs)
   }
 
@@ -187,7 +187,7 @@ export class NodesAndLinkedEdges extends GraphHitTestPolicy {
       }
     }
 
-    const linked_edges = new Selection()
+    const linked_edges = Selection.create()
     for (const i of edge_indices) {
       linked_edges.multiline_indices.set(i, [0]) //currently only supports 2-element multilines, so this is all of it
     }
@@ -245,7 +245,7 @@ export interface EdgesAndLinkedNodes extends EdgesAndLinkedNodes.Attrs {}
 export class EdgesAndLinkedNodes extends GraphHitTestPolicy {
   declare properties: EdgesAndLinkedNodes.Props
 
-  constructor(attrs?: Partial<EdgesAndLinkedNodes.Attrs>) {
+  protected constructor(attrs?: Partial<EdgesAndLinkedNodes.Attrs>) {
     super(attrs)
   }
 
@@ -273,7 +273,7 @@ export class EdgesAndLinkedNodes extends GraphHitTestPolicy {
     const node_data = dict(node_source.data)
     const index = node_data.get("index") ?? []
     const node_indices = uniq(nodes).map((i) => index_of(index, i))
-    return new Selection({indices: node_indices})
+    return Selection.create({indices: node_indices})
   }
 
   do_selection(hit_test_result: HitTestResult, graph: GraphRenderer, final: boolean, mode: SelectionMode): boolean {
@@ -325,7 +325,7 @@ export interface NodesAndAdjacentNodes extends NodesAndAdjacentNodes.Attrs {}
 export class NodesAndAdjacentNodes extends GraphHitTestPolicy {
   declare properties: NodesAndAdjacentNodes.Props
 
-  constructor(attrs?: Partial<NodesAndAdjacentNodes.Attrs>) {
+  protected constructor(attrs?: Partial<NodesAndAdjacentNodes.Attrs>) {
     super(attrs)
   }
 
@@ -365,7 +365,7 @@ export class NodesAndAdjacentNodes extends GraphHitTestPolicy {
     }
 
     const adjacent_node_indices = uniq(adjacent_nodes).map((i) => index_of(index, i))
-    return new Selection({indices: adjacent_node_indices})
+    return Selection.create({indices: adjacent_node_indices})
   }
 
   do_selection(hit_test_result: HitTestResult, graph: GraphRenderer, final: boolean, mode: SelectionMode): boolean {
