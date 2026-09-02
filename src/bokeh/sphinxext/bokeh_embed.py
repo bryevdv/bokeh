@@ -64,7 +64,6 @@ from ._internal.util import get_sphinx_resources
 
 __all__ = ("BokehEmbedDirective", "setup")
 
-GOOGLE_API_KEY = getenv("GOOGLE_API_KEY")
 # This is the Sphinx extension's private page envelope. It is deliberately
 # distinct from the public ``bokeh.embed/v1`` artifact schema nested inside it.
 PAGE_SCHEMA = "bokeh.embed-page/v1"
@@ -251,9 +250,6 @@ class BokehEmbedDirective(BokehDirective):
                     "Use a server embed outside this directive or provide a standalone model with CustomJS callbacks",
                 )
             artifact = embed(output, callback_policy=callback_policy)
-            # Exercising the typed renderer here keeps the directive on the
-            # common artifact/mount contract; page aggregation reuses its mounts.
-            artifact.fragment(resources="none")
             artifacts.append(artifact.to_dict())
             heights.append(_artifact_heights(artifact, output))
 
@@ -342,9 +338,9 @@ def process_artifact_nodes(app: Any, doctree: Any, fromdocname: str) -> None:
 
     records = [cast(dict[str, Any], node["record"]) for node in artifact_nodes]
     entries = _page_entries(fromdocname, records)
-    artifacts = [entry["artifact"] for entry in entries]
+    artifacts = [EmbedArtifact.from_dict(entry["artifact"]) for entry in entries]
     requirements = ResourceRequirements.union(
-        *(EmbedArtifact.from_dict(artifact).requires for artifact in artifacts),
+        *(artifact.requires for artifact in artifacts),
     )
     policy, policy_identity = _resource_policy(app, fromdocname)
     try:
@@ -378,8 +374,8 @@ def process_artifact_nodes(app: Any, doctree: Any, fromdocname: str) -> None:
     for node_index, node in enumerate(artifact_nodes):
         record = records[node_index]
         fragments: list[str] = []
-        for artifact_index, artifact_dict in enumerate(record["artifacts"]):
-            artifact = EmbedArtifact.from_dict(artifact_dict)
+        for artifact_index, _artifact_dict in enumerate(record["artifacts"]):
+            artifact = artifacts[entry_index]
             fragment = artifact.fragment(resources="none")
             entry = entries[entry_index]
             entry_index += 1
@@ -476,6 +472,7 @@ def setup(app: Any) -> SphinxParallelSpec:
     app.add_directive("bokeh-plot", _RemovedBokehPlotDirective)
     app.add_node(bokeh_artifact)
     app.add_config_value("bokeh_missing_google_api_key_ok", True, "html")
+    app.add_config_value("bokeh_embed_google_api_key_identity", _google_api_key_identity(), "env")
     app.add_config_value("bokeh_embed_resources", None, "html")
     app.add_config_value("bokeh_embed_resource_options", {}, "html")
     app.add_config_value("bokeh_embed_callback_policy", "error", "env")
@@ -491,14 +488,19 @@ def setup(app: Any) -> SphinxParallelSpec:
 def _replace_google_api_key(source: str, env: Any) -> str:
     if "GOOGLE_API_KEY" not in source:
         return source
-    if GOOGLE_API_KEY is None:
+    google_api_key = getenv("GOOGLE_API_KEY")
+    if google_api_key is None:
         if env.config.bokeh_missing_google_api_key_ok:
             return source.replace("GOOGLE_API_KEY", "MISSING_API_KEY")
         raise SphinxError(
             "The GOOGLE_API_KEY environment variable is not set. Set GOOGLE_API_KEY to a valid API key, "
             "or set bokeh_missing_google_api_key_ok=True in conf.py to build anyway (with broken GMaps)",
         )
-    return source.replace("GOOGLE_API_KEY", GOOGLE_API_KEY)
+    return source.replace("GOOGLE_API_KEY", google_api_key)
+
+
+def _google_api_key_identity() -> str:
+    return _sha256({"google_api_key": getenv("GOOGLE_API_KEY")})
 
 
 def _evaluate_source(source: str, filename: str, env: Any) -> tuple[Document, ExampleHandler]:
@@ -546,7 +548,7 @@ def _source_fingerprint(source: str, path: str, options: Mapping[str, Any], env:
         "schema": EMBED_ARTIFACT_SCHEMA,
         "bokeh_version": __version__,
         "origin": origin,
-        "source": source,
+        "source": _replace_google_api_key(source, env),
         "options": dict(sorted(options.items())),
         "callback_policy": env.config.bokeh_embed_callback_policy,
     }

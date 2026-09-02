@@ -5,10 +5,14 @@ import json
 import os
 from io import StringIO
 from pathlib import Path
+from typing import Any, Mapping
 
 # External imports
 import pytest
 from sphinx.application import Sphinx
+
+# Bokeh imports
+from bokeh.embed import EmbedArtifact
 
 
 def _project(tmp_path: Path, *, config: str = "") -> tuple[Path, Path, Path]:
@@ -239,6 +243,67 @@ def test_incremental_external_dependency_is_deterministic_and_cleans_stale_paylo
     [second] = _payloads(output)
     assert second.name != first_name
     assert not (second.parent / first_name).exists()
+
+
+def test_incremental_build_recompiles_substituted_google_api_key(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source, output, doctrees = _project(tmp_path)
+    (source / "index.rst").write_text(
+        "API key\n=======\n\n.. bokeh-embed::\n   :source-position: none\n\n"
+        "   from bokeh.io import show\n"
+        "   from bokeh.models import Div\n"
+        "   show(Div(text='GOOGLE_API_KEY'))\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("GOOGLE_API_KEY", "first-test-key")
+    _build(source, output, doctrees)
+    [first] = _payloads(output)
+    assert "first-test-key" in first.read_text(encoding="utf-8")
+
+    monkeypatch.setenv("GOOGLE_API_KEY", "second-test-key")
+    _build(source, output, doctrees, freshenv=False, force_all=False)
+    [second] = _payloads(output)
+    payload = second.read_text(encoding="utf-8")
+    assert second.name != first.name
+    assert "second-test-key" in payload
+    assert "first-test-key" not in payload
+    assert not first.exists()
+
+
+def test_page_processing_decodes_and_renders_each_artifact_once(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source, output, doctrees = _project(tmp_path)
+    (source / "index.rst").write_text(
+        "Artifacts\n=========\n\n.. bokeh-embed::\n   :source-position: none\n\n"
+        "   from bokeh.io import show\n"
+        "   from bokeh.models import Div\n"
+        "   show(Div(text='first'))\n"
+        "   show(Div(text='second'))\n",
+        encoding="utf-8",
+    )
+    original_from_dict = EmbedArtifact.from_dict
+    original_fragment = EmbedArtifact.fragment
+    decoded = 0
+    rendered = 0
+
+    def from_dict(cls: type[EmbedArtifact], value: Mapping[str, Any]) -> EmbedArtifact:
+        nonlocal decoded
+        decoded += 1
+        return original_from_dict(value)
+
+    def fragment(self: EmbedArtifact, *args: Any, **kwargs: Any) -> Any:
+        nonlocal rendered
+        rendered += 1
+        return original_fragment(self, *args, **kwargs)
+
+    monkeypatch.setattr(EmbedArtifact, "from_dict", classmethod(from_dict))
+    monkeypatch.setattr(EmbedArtifact, "fragment", fragment)
+
+    _build(source, output, doctrees)
+
+    assert decoded == 2
+    assert rendered == 2
 
 
 def test_parallel_builds_produce_one_payload_per_page(tmp_path: Path) -> None:
