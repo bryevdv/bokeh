@@ -133,18 +133,20 @@ def _page_errors(page: Any) -> list[str]:
 
 def _wait_for_document(target: Any) -> None:
     target.wait_for_function(
-        "() => globalThis.Bokeh != null && Bokeh.documents.length === 1",
+        "() => document.querySelector('[data-bokeh-mounted]')?.bokehMount?.state === 'ready'",
         timeout=30_000,
     )
 
 
 def _set_fourier_terms(target: Any, terms: int) -> None:
     target.evaluate(
-        "terms => { Bokeh.documents[0].get_model_by_name('terms').value = terms }",
+        "terms => { document.querySelector('[data-bokeh-mounted]').bokehMount.document"
+        ".get_model_by_name('terms').value = terms }",
         terms,
     )
     target.wait_for_function(
-        "terms => Bokeh.documents[0].get_model_by_name('spectrum-source').data.harmonic.length === terms",
+        "terms => document.querySelector('[data-bokeh-mounted]').bokehMount.document"
+        ".get_model_by_name('spectrum-source').data.harmonic.length === terms",
         arg=terms,
         timeout=10_000,
     )
@@ -189,11 +191,15 @@ def test_fastapi_shared_data_streams_to_independent_sessions(browser: Any) -> No
                 assert response is not None
                 assert response.ok
                 _wait_for_document(page)
-                initial.append(page.evaluate("Bokeh.documents[0].get_model_by_name('shared-phase').text"))
+                initial.append(page.evaluate(
+                    "document.querySelector('[data-bokeh-mounted]').bokehMount.document"
+                    ".get_model_by_name('shared-phase').text",
+                ))
 
             for page, text in zip(pages, initial):
                 page.wait_for_function(
-                    "text => Bokeh.documents[0].get_model_by_name('shared-phase').text !== text",
+                    "text => document.querySelector('[data-bokeh-mounted]').bokehMount.document"
+                    ".get_model_by_name('shared-phase').text !== text",
                     arg=text,
                     timeout=10_000,
                 )
@@ -236,15 +242,20 @@ def test_streamlit_particle_viewers_animate_and_keep_independent_state(browser: 
             viewers = [parse_qs(urlparse(frame.url).query)["viewer"][0] for frame in frames]
             assert viewers[0] != viewers[1]
             assert all(
-                frame.evaluate("Bokeh.documents[0].get_model_by_name('particles').data.x.length") == 50_000
+                frame.evaluate(
+                    "document.querySelector('[data-bokeh-mounted]').bokehMount.document"
+                    ".get_model_by_name('particles').data.x.length",
+                ) == 50_000
                 for frame in frames
             )
 
             particle_x = frames[0].evaluate(
-                "Number(Bokeh.documents[0].get_model_by_name('particles').data.x[12345])",
+                "Number(document.querySelector('[data-bokeh-mounted]').bokehMount.document"
+                ".get_model_by_name('particles').data.x[12345])",
             )
             frames[0].wait_for_function(
-                "x => Number(Bokeh.documents[0].get_model_by_name('particles').data.x[12345]) !== x",
+                "x => Number(document.querySelector('[data-bokeh-mounted]').bokehMount.document"
+                ".get_model_by_name('particles').data.x[12345]) !== x",
                 arg=particle_x,
                 timeout=10_000,
             )
@@ -252,11 +263,13 @@ def test_streamlit_particle_viewers_animate_and_keep_independent_state(browser: 
             pages[0].get_by_role("button", name="Vortex flow", exact=True).click()
             pages[0].get_by_role("button", name="Binary gravity", exact=True).click()
             frames[0].wait_for_function(
-                "() => Bokeh.documents[0].get_model_by_name('status').text.includes('Binary softened-gravity field')",
+                "() => document.querySelector('[data-bokeh-mounted]').bokehMount.document"
+                ".get_model_by_name('status').text.includes('Binary softened-gravity field')",
                 timeout=10_000,
             )
             assert "Counter-rotating vortex flow" in frames[1].evaluate(
-                "Bokeh.documents[0].get_model_by_name('status').text",
+                "document.querySelector('[data-bokeh-mounted]').bokehMount.document"
+                ".get_model_by_name('status').text",
             )
             assert errors == [[], []]
         finally:

@@ -4,7 +4,7 @@ import {
   BOKEH_MOUNTED_ATTRIBUTE, MountError, MountSource, mount, publish_mount_error, show, when_mounted,
 } from "@bokehjs/api/io"
 import {figure} from "@bokehjs/api/plotting"
-import {Document, documents} from "@bokehjs/document"
+import {Document} from "@bokehjs/document"
 import {ColumnDataSource} from "@bokehjs/models/sources/column_data_source"
 import {Plot, PlotView} from "@bokehjs/models/plots/plot"
 import {defer} from "@bokehjs/core/util/defer"
@@ -25,16 +25,16 @@ describe("in api/plotting module", () => {
     it("returns an idempotent disposal handle", async () => {
       const target = document.createElement("div")
       document.body.append(target)
-      const documents_before = documents.length
       const plot = Plot.create()
 
       const mounted = mount(plot, target)
+      const owned_document = mounted.document
       expect(mounted.state).to.be.equal("pending")
       await mounted.ready
       const [view] = mounted.views
       expect(view).to.be.instanceof(PlotView)
       expect(plot.document).to.be.equal(mounted.document)
-      expect(documents.length).to.be.equal(documents_before + 1)
+      expect(owned_document.is_destroyed).to.be.false
       expect(mounted.state).to.be.equal("ready")
       expect(mounted.ownership).to.be.equal({
         document: "mount", views: "mount", targets: "caller", session: "none", resources: "none",
@@ -45,7 +45,7 @@ describe("in api/plotting module", () => {
       await disposal
       expect(mounted.disposed).to.be.true
       expect(plot.document).to.be.null
-      expect(documents.length).to.be.equal(documents_before)
+      expect(owned_document.is_destroyed).to.be.true
       expect(target.contains(view.el)).to.be.false
 
       target.remove()
@@ -336,13 +336,13 @@ describe("in api/plotting module", () => {
 
       const target = document.createElement("div")
       document.body.append(target)
-      const documents_before = documents.length
       const plot = DelayedPlot.create()
       const mounted = mount(plot, target)
+      const owned_document = mounted.document
       await started
       await mounted.dispose()
       expect(plot.document).to.be.null
-      expect(documents.length).to.be.equal(documents_before)
+      expect(owned_document.is_destroyed).to.be.true
       expect(mounted.state).to.be.equal("disposed")
 
       continue_initialization()
@@ -356,10 +356,10 @@ describe("in api/plotting module", () => {
 
     it("reports target errors and rolls back mount-owned documents", async () => {
       const target = document.createElement("div")
-      const documents_before = documents.length
       const plot = Plot.create()
       const errors: MountError[] = []
       const mounted = mount(plot, target, {on_error: (error) => errors.push(error)})
+      const owned_document = mounted.document
 
       const error = await mounted.ready.then(() => null, (error: unknown) => error)
       expect(error).to.be.instanceof(MountError)
@@ -370,7 +370,7 @@ describe("in api/plotting module", () => {
       await mounted.when_disposed
       expect(errors).to.be.equal([error as MountError])
       expect(plot.document).to.be.null
-      expect(documents.length).to.be.equal(documents_before)
+      expect(owned_document.is_destroyed).to.be.true
     })
 
     it("rolls back all views and ownership when one root fails to render", async () => {
@@ -389,10 +389,10 @@ describe("in api/plotting module", () => {
 
       const target = document.createElement("div")
       document.body.append(target)
-      const documents_before = documents.length
       const first = Plot.create()
       const second = FailingPlot.create()
       const mounted = mount({first, second}, target)
+      const owned_document = mounted.document
 
       const error = await mounted.ready.then(() => null, (error: unknown) => error)
       expect(error).to.be.instanceof(MountError)
@@ -403,7 +403,7 @@ describe("in api/plotting module", () => {
       expect(target.childElementCount).to.be.equal(0)
       expect(first.document).to.be.null
       expect(second.document).to.be.null
-      expect(documents.length).to.be.equal(documents_before)
+      expect(owned_document.is_destroyed).to.be.true
       target.remove()
     })
 
@@ -421,7 +421,6 @@ describe("in api/plotting module", () => {
 
     it("rolls back even when an error callback throws", async () => {
       const target = document.createElement("div")
-      const documents_before = documents.length
       const plot = Plot.create()
       let callback_called = false
       const mounted = mount(plot, target, {
@@ -430,6 +429,7 @@ describe("in api/plotting module", () => {
           throw new Error("application error handler failed")
         },
       })
+      const owned_document = mounted.document
 
       const error = await mounted.ready.then(() => null, (error: unknown) => error)
       expect(callback_called).to.be.true
@@ -437,7 +437,7 @@ describe("in api/plotting module", () => {
       expect((error as MountError).kind).to.be.equal("target")
       expect(mounted.disposed).to.be.true
       expect(plot.document).to.be.null
-      expect(documents.length).to.be.equal(documents_before)
+      expect(owned_document.is_destroyed).to.be.true
     })
 
     it("surfaces dynamic root render failures without disposing a ready caller document", async () => {
@@ -480,14 +480,15 @@ describe("in api/plotting module", () => {
       const target = document.createElement("div")
       const controller = new AbortController()
       controller.abort(new Error("component unmounted"))
-      const documents_before = documents.length
-
-      const mounted = mount(Plot.create(), target, {signal: controller.signal})
+      const plot = Plot.create()
+      const mounted = mount(plot, target, {signal: controller.signal})
+      const owned_document = mounted.document
       const error = await mounted.ready.then(() => null, (error: unknown) => error)
       expect(error).to.be.instanceof(MountError)
       expect((error as MountError).kind).to.be.equal("abort")
       expect((error as Error).message).to.be.equal("component unmounted")
-      expect(documents.length).to.be.equal(documents_before)
+      expect(plot.document).to.be.null
+      expect(owned_document.is_destroyed).to.be.true
     })
 
     it("releases model ownership synchronously when mounting is aborted", async () => {

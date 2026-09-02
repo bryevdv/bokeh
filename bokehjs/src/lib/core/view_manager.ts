@@ -3,6 +3,14 @@ import type {View, ViewOf, IterViews} from "./view"
 import type {Options} from "core/build_views"
 import {build_view} from "./build_views"
 
+/**
+ * Read-only, mount-scoped access to rendered views.
+ *
+ * A lookup traverses only the views owned by one `BokehMount`. It is not a
+ * global model-ID registry and intentionally omits lifecycle mutation such as
+ * building, adding, or clearing views. Use the owning mount's root, attachment,
+ * and disposal APIs for those operations.
+ */
 export interface ViewLookup {
   [Symbol.iterator](): IterViews
   all_views(): IterViews
@@ -130,7 +138,7 @@ export class ViewQuery extends AbstractViewQuery {
 export class ViewManager extends AbstractViewQuery {
   protected readonly _roots: Set<View>
 
-  constructor(roots: Iterable<View> = [], protected global?: ViewManager) {
+  constructor(roots: Iterable<View> = []) {
     super()
     this._roots = new Set(roots)
   }
@@ -168,12 +176,10 @@ export class ViewManager extends AbstractViewQuery {
 
   add(view: View): void {
     this._roots.add(view)
-    this.global?.add(view)
   }
 
   delete(view: View): void {
     this._roots.delete(view)
-    this.global?.delete(view)
   }
 
   remove(view: View): void {

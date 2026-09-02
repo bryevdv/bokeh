@@ -4,7 +4,7 @@ import {trap} from "#framework/util"
 import * as sinon from "sinon"
 
 import type {DocJson, Patch} from "@bokehjs/document"
-import {Document, DEFAULT_TITLE, documents} from "@bokehjs/document"
+import {Document, DEFAULT_TITLE} from "@bokehjs/document"
 import * as ev from "@bokehjs/document/events"
 import {version as js_version} from "@bokehjs/version"
 import {register_models} from "@bokehjs/base"
@@ -1028,7 +1028,6 @@ describe("Document", () => {
   })
 
   it("destroys a partially deserialized document when a later root fails", () => {
-    const documents_before = documents.length
     const doc_json = {
       version: js_version,
       roots: [
@@ -1037,8 +1036,14 @@ describe("Document", () => {
       ],
     }
 
-    expect(() => Document.from_json(doc_json)).to.throw(Error, /could not resolve type 'MissingModel'/)
-    expect(documents.length).to.be.equal(documents_before)
+    const destroy = sinon.spy(Document.prototype, "destroy")
+    try {
+      expect(() => Document.from_json(doc_json)).to.throw(Error, /could not resolve type 'MissingModel'/)
+      expect(destroy.calledOnce).to.be.true
+      expect((destroy.firstCall.thisValue as Document).is_destroyed).to.be.true
+    } finally {
+      destroy.restore()
+    }
   })
 
   it("computes minimal patch for objects referencing known objects", () => {

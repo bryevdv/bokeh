@@ -1,4 +1,4 @@
-import {ColumnDataSource, ModelResolver, MountError, Plotting, Range1d, index, register_models, register_standard_models} from "@bokeh/bokehjs"
+import {ColumnDataSource, ModelResolver, MountError, Plotting, Range1d, register_models, register_standard_models} from "@bokeh/bokehjs"
 import type {BokehMount, MountOptions} from "@bokeh/bokehjs"
 import {DocumentMountController, MountController} from "@bokeh/framework"
 import type {BokehModel, BokehRootModel} from "@bokeh/framework"
@@ -87,14 +87,14 @@ async function validate_mount(model: ReturnType<typeof Plotting.figure>, mounted
   assert(!mounted.handle.disposed, "adapter returned a disposed mount")
   assert(mounted.handle.views.length == 1, "adapter didn't create exactly one root view")
   assert(mounted.target.childElementCount > 0, "adapter didn't attach Bokeh DOM")
-  assert(index.get(model) != null, "mounted view wasn't added to Bokeh's global view index")
+  assert(mounted.handle.view_lookup.find_one(model) != null, "mounted view wasn't available from its mount handle")
 }
 
 async function validate_unmount(model: ReturnType<typeof Plotting.figure>, mounted: AdapterMount): Promise<void> {
   await mounted.unmount()
   assert(mounted.handle.disposed, "framework unmount didn't dispose the Bokeh mount")
   assert(mounted.target.childElementCount == 0, "framework unmount retained Bokeh DOM")
-  assert(index.get(model) == null, "framework unmount retained a view in Bokeh's global index")
+  assert(mounted.handle.view_lookup.find_one(model) == null, "framework unmount retained a view in its mount handle")
 }
 
 async function validate_controller(model: ReturnType<typeof Plotting.figure>): Promise<void> {
@@ -184,7 +184,8 @@ async function validate_document_controller(): Promise<void> {
   assert(unrelated_content.isConnected, "document controller disturbed intervening framework content")
   assert(first.document == mounted.document && second.document == mounted.document && source.document == mounted.document,
     "distributed roots didn't retain one shared document")
-  assert(index.get(first) != null && index.get(second) != null, "distributed roots weren't globally indexed")
+  assert(mounted.view_lookup.find_one(first) != null && mounted.view_lookup.find_one(second) != null,
+    "distributed roots weren't available from their mount handle")
 
   let resolve_remounted!: (mounted: BokehMount) => void
   let reject_remounted!: (error: unknown) => void
@@ -209,13 +210,13 @@ async function validate_document_controller(): Promise<void> {
   assert(!mounted.disposed, "detaching one document slot disposed the shared mount")
   assert(child_count(first_target) == 0, "detaching one document slot retained its Bokeh DOM")
   assert(child_count(second_target) > 0, "detaching one document slot removed a sibling root")
-  assert(index.get(first) == null && index.get(second) != null,
-    "selective document detachment removed the wrong globally indexed views")
+  assert(mounted.view_lookup.find_one(first) == null && mounted.view_lookup.find_one(second) != null,
+    "selective document detachment removed the wrong mount-local views")
   assert([first, second, source].every((model) => model.document == mounted.document),
     "selective document detachment released shared document ownership")
 
   const reattach_first = controller.attach(first, first_target)
-  await wait_until(() => index.get(first) != null, "reattaching a document slot didn't rebuild its root view")
+  await wait_until(() => mounted.view_lookup.find_one(first) != null, "reattaching a document slot didn't rebuild its root view")
   assert(child_count(first_target) > 0 && child_count(second_target) > 0,
     "reattaching a document slot disturbed sibling framework content")
 
@@ -253,14 +254,16 @@ async function validate_multi_root_mount(adapter: Adapter): Promise<void> {
   assert(source.document == mounted.handle.document, "shared source wasn't attached to the roots' document")
   assert(first.x_range == second.x_range && x_range.document == mounted.handle.document,
     "shared range wasn't retained in the roots' document")
-  assert(index.get(first) != null && index.get(second) != null, "multi-root views weren't globally indexed")
+  assert(mounted.handle.view_lookup.find_one(first) != null && mounted.handle.view_lookup.find_one(second) != null,
+    "multi-root views weren't available from their mount handle")
   source.stream({x: [3], y: [4], z: [3]})
   assert(source.get_length() == 4, "shared source didn't remain live after a multi-root mount")
 
   await mounted.unmount()
   assert(mounted.handle.disposed, "multi-root framework unmount didn't dispose the Bokeh mount")
   assert(mounted.target.childElementCount == 0, "multi-root framework unmount retained Bokeh DOM")
-  assert(index.get(first) == null && index.get(second) == null, "multi-root unmount retained globally indexed views")
+  assert(mounted.handle.view_lookup.find_one(first) == null && mounted.handle.view_lookup.find_one(second) == null,
+    "multi-root unmount retained mount-local views")
   assert([first, second, source, x_range].every((model) => model.document == null),
     "multi-root unmount retained temporary document ownership")
 }
@@ -310,7 +313,7 @@ export async function run_framework_test(framework: string, adapter: Adapter): P
   controller.abort()
   assert(third.handle.disposed, "aborting mountOptions.signal didn't dispose the Bokeh mount")
   assert(third.target.childElementCount == 0, "aborting mountOptions.signal retained Bokeh DOM")
-  assert(index.get(plot) == null, "aborting mountOptions.signal retained a view in Bokeh's global index")
+  assert(third.handle.view_lookup.find_one(plot) == null, "aborting mountOptions.signal retained a mount-local view")
   await third.unmount()
 
   await validate_controller(plot)

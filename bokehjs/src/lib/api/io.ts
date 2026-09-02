@@ -511,6 +511,12 @@ export class BokehMount<T extends HasProps = HasProps> {
     return this._mount?.targets ?? new Map()
   }
 
+  /**
+   * Query views owned by this ready mount, including descendants.
+   *
+   * Prefer [[view]] for a logical artifact root. Use this lookup when external
+   * code already has a model from [[document]] and needs its rendered view.
+   */
   get view_lookup(): ViewLookup {
     if (this._mount == null) {
       throw new MountError("source", "Bokeh mount view lookup is not available before mount readiness")

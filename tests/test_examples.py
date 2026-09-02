@@ -274,12 +274,19 @@ def _run_in_browser(example: Example, url: str, report: list[Example], page: Any
         if success:
             try:
                 page.wait_for_function(
-                    """Bokeh.documents.length > 0 &&
-                        Bokeh.documents.every((doc) => doc.is_idle) &&
-                        Bokeh.index.roots.some((view) => {
+                    """() => {
+                        const mounts = [...new Set(
+                            [...document.querySelectorAll("[data-bokeh-mounted]")]
+                                .map((target) => target.bokehMount)
+                                .filter((mount) => mount != null),
+                        )]
+                        return mounts.length > 0 &&
+                            mounts.every((mount) => mount.state === "ready" && mount.document.is_idle) &&
+                            mounts.some((mount) => mount.views.some((view) => {
                             const {width, height} = view.el.getBoundingClientRect()
                             return width > 0 && height > 0
-                        })""",
+                            }))
+                    }""",
                     timeout=15_000,
                 )
             except PlaywrightTimeoutError:
@@ -308,7 +315,14 @@ def _run_in_browser(example: Example, url: str, report: list[Example], page: Any
 def _screenshot(page: Any) -> bytes:
     clip = page.evaluate("""() => {
         const style = getComputedStyle(document.body)
-        const bounds = Bokeh.index.roots.map((view) => view.el.getBoundingClientRect())
+        const mounts = new Set(
+            [...document.querySelectorAll("[data-bokeh-mounted]")]
+                .map((target) => target.bokehMount)
+                .filter((mount) => mount != null),
+        )
+        const bounds = [...mounts].flatMap((mount) =>
+            mount.views.map((view) => view.el.getBoundingClientRect()),
+        )
         const right = Math.ceil(Math.max(0, ...bounds.map((bbox) => bbox.right)))
         const bottom = Math.ceil(Math.max(0, ...bounds.map((bbox) => bbox.bottom)))
         return {

@@ -145,33 +145,38 @@ to publish one. The wait is target-local—there is no process-wide mount
 registry—and accepts an ``AbortSignal``.
 
 This example is covered by the BokehJS mount unit suite. The observer script
-intentionally appears before the artifact loader:
+intentionally appears before two independent artifact loaders, which shows how
+external code can acquire handles even when it did not perform either mount:
 
 .. code-block:: html
 
-    <div id="external-sales-plot"></div>
-    <button id="remove-sales-plot">Remove plot</button>
+    <section id="sales-panel">
+      <div class="external-bokeh-plot" id="external-sales-plot"></div>
+    </section>
+    <section id="inventory-panel">
+      <div class="external-bokeh-plot" id="external-inventory-plot"></div>
+    </section>
 
     <script type="module">
-      const target = document.querySelector("#external-sales-plot")
       const controller = new AbortController()
       window.addEventListener("pagehide", () => controller.abort(), {once: true})
 
-      const mounted = await Bokeh.when_mounted(target, {signal: controller.signal})
-      await mounted.ready
+      const targets = [...document.querySelectorAll(".external-bokeh-plot")]
+      const [sales, inventory] = await Promise.all(targets.map(
+        (target) => Bokeh.when_mounted(target, {signal: controller.signal}),
+      ))
+      await Promise.all([sales.ready, inventory.ready])
+      console.assert(sales !== inventory) // each host has an independent owner
 
-      const plot = mounted.root("sales")
-      const source = mounted.document.get_model_by_name("sales-source")
-      const plot_view = plot == null ? null : mounted.view_lookup.find_one(plot)
+      const plot = sales.root("sales")
+      const source = sales.document.get_model_by_name("sales-source")
+      const plot_view = plot == null ? null : sales.view_lookup.find_one(plot)
       console.log({plot, source, plot_view})
-
-      document.querySelector("#remove-sales-plot").addEventListener("click", async () => {
-        await mounted.dispose()
-      }, {once: true})
     </script>
 
-    <!-- This later script creates or decodes the mount with logical root "sales". -->
+    <!-- These later scripts create or decode the two mounts. -->
     <script src="/assets/sales-artifact.js"></script>
+    <script src="/assets/inventory-artifact.js"></script>
 
 Every resolved logical-root target exposes the same ``BokehMount`` through
 ``target.bokehMount``. ``HTMLElement`` targets also carry a
@@ -206,6 +211,29 @@ and abort cleanup consistently.
 and ``get_one()``. It does not expose ``ViewManager`` mutation operations.
 Prefer ``view(key)`` for a logical root and use ``view_lookup`` only when code
 already has a model deeper in the document graph.
+
+Bokeh 4.0 removes the browser-global discovery surfaces rather than emulating
+them over mount handles:
+
+.. list-table:: Browser integration migration
+    :header-rows: 1
+
+    * - Removed surface
+      - Mount-scoped replacement
+    * - ``Bokeh.index[model_id]``
+      - Select the host target, await ``Bokeh.when_mounted(target)``, and use
+        ``root(key)``, ``document.get_model_by_name(name)``, or
+        ``view_lookup.find_one(model)``.
+    * - ``Bokeh.documents``
+      - Use ``mounted.document`` for the particular target or retain the
+        ``BokehMount`` returned by code that performed the mount.
+    * - A bootstrap's private ``view_manager``
+      - Query ``mounted.view_lookup``. Attach, detach, replace, and dispose
+        through the owning mount instead of mutating a view manager.
+
+``CustomJS`` still receives ``cb_context.index`` for callback compatibility,
+but that value is the current document's mount-scoped lookup. It cannot see a
+sibling mount and is not exported as ``Bokeh.index``.
 
 Sharing models between plots
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
