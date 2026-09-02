@@ -74,8 +74,16 @@ class ResourceAssetRequirement:
     module: bool = False
 
     def __post_init__(self) -> None:
+        if self.kind not in ("script", "style"):
+            raise ValueError("resource asset requirement kind must be 'script' or 'style'")
         if (self.url is None) == (self.content is None):
             raise ValueError("a resource asset requirement needs exactly one of 'url' or 'content'")
+        for name in ("url", "content", "integrity", "crossorigin"):
+            value = getattr(self, name)
+            if value is not None and not isinstance(value, str):
+                raise ValueError(f"resource asset requirement {name} must be a string")
+        if not isinstance(self.module, bool):
+            raise ValueError("resource asset requirement module must be a boolean")
 
     def to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {"kind": self.kind}
@@ -89,13 +97,18 @@ class ResourceAssetRequirement:
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> ResourceAssetRequirement:
+        if not isinstance(value, Mapping):
+            raise ValueError("resource asset requirements must be objects")
+        kind = value.get("kind")
+        if kind not in ("script", "style"):
+            raise ValueError("resource asset requirement kind must be 'script' or 'style'")
         return cls(
-            kind=value["kind"],
+            kind=cast(Literal["script", "style"], kind),
             url=value.get("url"),
             content=value.get("content"),
             integrity=value.get("integrity"),
             crossorigin=value.get("crossorigin"),
-            module=bool(value.get("module", False)),
+            module=value.get("module", False),
         )
 
 
@@ -105,14 +118,28 @@ class ExtensionRequirement:
     name: str
     assets: tuple[ResourceAssetRequirement, ...] = ()
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.name, str) or not self.name:
+            raise ValueError("resource extension names must be non-empty strings")
+        if any(not isinstance(asset, ResourceAssetRequirement) for asset in self.assets):
+            raise ValueError("resource extension assets must be ResourceAssetRequirement instances")
+
     def to_dict(self) -> dict[str, Any]:
         return {"name": self.name, "assets": [asset.to_dict() for asset in self.assets]}
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> ExtensionRequirement:
+        if not isinstance(value, Mapping):
+            raise ValueError("resource extension requirements must be objects")
+        assets = value.get("assets", [])
+        if not isinstance(assets, list):
+            raise ValueError("resource extension assets must be an array")
+        name = value.get("name")
+        if not isinstance(name, str) or not name:
+            raise ValueError("resource extension names must be non-empty strings")
         return cls(
-            name=str(value["name"]),
-            assets=tuple(ResourceAssetRequirement.from_dict(asset) for asset in value.get("assets", [])),
+            name=name,
+            assets=tuple(ResourceAssetRequirement.from_dict(asset) for asset in assets),
         )
 
 
@@ -140,9 +167,19 @@ class ResourceRequirements:
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> ResourceRequirements:
+        if not isinstance(value, Mapping):
+            raise ValueError("artifact resource requirements must be an object")
+        components = value.get("components")
+        extensions = value.get("extensions")
+        if not isinstance(components, list):
+            raise ValueError("artifact resource components must be an array")
+        if not isinstance(extensions, list):
+            raise ValueError("artifact resource extensions must be an array")
+        if any(not isinstance(component, str) or component not in _COMPONENT_NAMES for component in components):
+            raise ValueError("artifact resource components contain an unknown component")
         return cls(
-            components=tuple(value.get("components", ("bokeh/core",))),
-            extensions=tuple(ExtensionRequirement.from_dict(extension) for extension in value.get("extensions", [])),
+            components=cast(tuple[ResourceComponent, ...], tuple(components)),
+            extensions=tuple(ExtensionRequirement.from_dict(extension) for extension in extensions),
         )
 
     @classmethod
@@ -153,10 +190,10 @@ class ResourceRequirements:
     @classmethod
     def union(cls, *requirements: ResourceRequirements) -> ResourceRequirements:
         """Return a deterministic exact union of resource requirements."""
-        components = tuple(
+        components = cast(tuple[ResourceComponent, ...], tuple(
             component for component in _COMPONENT_NAMES
             if any(component in requirement.components for requirement in requirements)
-        )
+        ))
         extensions: dict[str, list[ResourceAssetRequirement]] = {}
         for requirement in requirements:
             for extension in requirement.extensions:

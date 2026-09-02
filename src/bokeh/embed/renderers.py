@@ -98,7 +98,7 @@ def render_fragment(artifact: EmbedArtifact, *, resources: ResourcePolicy | Reso
     bootstrap = (
         _inline_bootstrap(artifact.fingerprint, nonce=policy.nonce)
         if bootstrap_url is None
-        else _external_bootstrap(bootstrap_url, artifact.fingerprint)
+        else _external_bootstrap(bootstrap_url, artifact.fingerprint, nonce=policy.nonce)
     )
     script = f"{payload}\n{bootstrap}"
     html = "\n".join(filter(None, (_render_resources(resolved), *(mount.html for mount in mounts), script)))
@@ -123,7 +123,9 @@ def render_external(artifact: EmbedArtifact, *, payload_url: str,
             raise ValueError("external_only resource policy requires an external artifact bootstrap_url")
         bootstrap = _inline_bootstrap(artifact.fingerprint, payload_url=payload_url, nonce=policy.nonce)
     else:
-        bootstrap = _external_bootstrap(bootstrap_url, artifact.fingerprint, payload_url=payload_url)
+        bootstrap = _external_bootstrap(
+            bootstrap_url, artifact.fingerprint, payload_url=payload_url, nonce=policy.nonce,
+        )
     html = "\n".join(filter(None, (_render_resources(resolved), *(mount.html for mount in mounts), bootstrap)))
     build_fingerprint = _build_fingerprint(
         artifact, resolved, "external", {"payload_url": payload_url, "bootstrap_url": bootstrap_url},
@@ -148,7 +150,7 @@ def render_page(artifact: EmbedArtifact, *, resources: ResourcePolicy | Resource
     bootstrap = (
         _inline_bootstrap(artifact.fingerprint, nonce=policy.nonce)
         if bootstrap_url is None
-        else _external_bootstrap(bootstrap_url, artifact.fingerprint)
+        else _external_bootstrap(bootstrap_url, artifact.fingerprint, nonce=policy.nonce)
     )
     plot_script = f"{payload}\n{bootstrap}"
     plot_div = "\n".join(mount.html for mount in mounts)
@@ -248,12 +250,15 @@ def _inline_bootstrap(fingerprint: str, *, payload_url: str | None = None, nonce
     return f"<script {' '.join(attrs)}>{code}</script>"
 
 
-def _external_bootstrap(bootstrap_url: str, fingerprint: str, *, payload_url: str | None = None) -> str:
+def _external_bootstrap(bootstrap_url: str, fingerprint: str, *, payload_url: str | None = None,
+        nonce: str | None = None) -> str:
     attrs = [
         f'src="{escape(bootstrap_url, quote=True)}"',
         "data-bokeh-artifact-bootstrap",
         f'data-bokeh-artifact="{escape(fingerprint, quote=True)}"',
     ]
+    if nonce is not None:
+        attrs.append(f'nonce="{escape(nonce, quote=True)}"')
     if payload_url is not None:
         attrs.append(f'data-bokeh-payload-url="{escape(payload_url, quote=True)}"')
     return f"<script {' '.join(attrs)}></script>"

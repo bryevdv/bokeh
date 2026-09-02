@@ -8,7 +8,7 @@ import {ModelResolver} from "@bokehjs/core/resolvers"
 import {documents} from "@bokehjs/document"
 import * as embed from "@bokehjs/embed"
 import type {EmbedArtifact} from "@bokehjs/embed/artifact"
-import {compute_embed_artifact_fingerprint, validate_embed_artifact} from "@bokehjs/embed/artifact"
+import {ArtifactError, compute_embed_artifact_fingerprint, validate_embed_artifact} from "@bokehjs/embed/artifact"
 import type {ResourceRequirements} from "@bokehjs/embed/resources"
 import {ResourceError, ResourceLoader} from "@bokehjs/embed/resources"
 import {CustomJS} from "@bokehjs/models"
@@ -423,10 +423,44 @@ describe("EmbedArtifact runtime", () => {
     }
     const standalone = validate_embed_artifact(fixture("standalone-keyed-roots"))
     expect(standalone.source.kind).to.be.equal("standalone")
-    expect(standalone.buffers).to.be.equal([{id: "buffer-0", encoding: "base64", data: "AA=="}])
     const server = validate_embed_artifact(fixture("server-existing-session"))
     expect(server.source.kind).to.be.equal("server")
     expect(server.roots).to.be.equal([{key: "detail", model_id: "fixture-root"}])
+  })
+
+  it("keeps envelope metadata outside model ID normalization", async () => {
+    const actual = fixture("standalone-keyed-roots")
+    if (actual.source.kind != "standalone") {
+      throw new Error("expected a standalone fixture")
+    }
+    const retained = actual.source.documents[0].roots[0] as {id?: string}
+    retained.id = "retained-model-id"
+    actual.metadata = {id: "retained-model-id"}
+    const normalized_lookalike = structuredClone(actual)
+    normalized_lookalike.metadata = {id: "model-0"}
+
+    expect(await compute_embed_artifact_fingerprint(actual)).to.not.be.equal(
+      await compute_embed_artifact_fingerprint(normalized_lookalike),
+    )
+  })
+
+  it("rejects missing fingerprints, removed buffers, and malformed resource literals", () => {
+    const missing = fixture("standalone-keyed-roots") as unknown as {[key: string]: unknown}
+    delete missing.fingerprint
+    expect(() => validate_embed_artifact(missing)).to.throw(ArtifactError, /fingerprint/)
+
+    const buffered = fixture("standalone-keyed-roots") as unknown as {[key: string]: unknown}
+    buffered.buffers = []
+    expect(() => validate_embed_artifact(buffered)).to.throw(ArtifactError, /not part of bokeh\.embed\/v1/)
+
+    const malformed = fixture("standalone-keyed-roots") as unknown as {
+      requires: {extensions: unknown[]}
+    }
+    malformed.requires.extensions = [{
+      name: "bad",
+      assets: [{kind: "bogus", content: "void 0"}],
+    }]
+    expect(() => validate_embed_artifact(malformed)).to.throw(ArtifactError, /kind must be 'script' or 'style'/)
   })
 
   it("deduplicates concurrent and sequential additive resource loads", async () => {
