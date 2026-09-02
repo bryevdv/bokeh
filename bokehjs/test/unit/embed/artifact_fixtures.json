@@ -61,9 +61,15 @@
           "extensions": []
         },
         "metadata": {
-          "fixture": "cross-language"
+          "fixture": "cross-language",
+          "numbers": {
+            "fixed_threshold": 0.000001,
+            "fraction": 1.23456789012345,
+            "negative_zero": -0.0,
+            "scientific_threshold": 1e-7
+          }
         },
-        "fingerprint": "e5dfe3fab52396aaf87fa5352c1fc3f273952ef71080d35069a0cd037be849b2"
+        "fingerprint": "7bb82770934bfc846ec2d92d5f4d808063b28778f5c7e7c1e8ab8b8b1dfc9951"
       }
     },
     {

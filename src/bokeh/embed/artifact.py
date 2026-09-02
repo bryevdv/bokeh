@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, Mapping
 
 # Bokeh imports
 from .. import __version__
+from ._json import canonical_json, json_copy
 from .resources import ResourceRequirements
 
 if TYPE_CHECKING:
@@ -128,8 +129,8 @@ class EmbedArtifact:
             raise ArtifactValidationError("artifact source.kind must be 'standalone' or 'server'")
         if kind == "standalone":
             documents = self.source.get("documents")
-            if not isinstance(documents, list) or not documents:
-                raise ArtifactValidationError("standalone artifacts require a non-empty source.documents list")
+            if not isinstance(documents, list) or len(documents) != 1:
+                raise ArtifactValidationError("standalone artifacts require exactly one source document")
             if any(not isinstance(document, Mapping) for document in documents):
                 raise ArtifactValidationError("standalone artifact documents must be objects")
             for root in self.roots:
@@ -156,8 +157,11 @@ class EmbedArtifact:
         keys = [root.key for root in self.roots]
         if len(keys) != len(set(keys)):
             raise ArtifactValidationError("artifact root keys must be unique")
-        object.__setattr__(self, "source", _json_copy(dict(self.source)))
-        object.__setattr__(self, "metadata", _json_copy(dict(self.metadata)))
+        try:
+            object.__setattr__(self, "source", json_copy(dict(self.source)))
+            object.__setattr__(self, "metadata", json_copy(dict(self.metadata)))
+        except ValueError as error:
+            raise ArtifactValidationError(str(error)) from error
         object.__setattr__(self, "fingerprint", _fingerprint(self._data(include_fingerprint=False)))
 
     def _data(self, *, include_fingerprint: bool) -> dict[str, Any]:
@@ -184,8 +188,8 @@ class EmbedArtifact:
     def to_json_string(self, *, pretty: bool = False) -> str:
         '''Serialize the artifact deterministically as compact or indented JSON.'''
         if pretty:
-            return json.dumps(self.to_dict(), ensure_ascii=False, sort_keys=True, indent=2)
-        return json.dumps(self.to_dict(), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            return json.dumps(self.to_dict(), ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False)
+        return canonical_json(self.to_dict())
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> EmbedArtifact:
@@ -270,14 +274,16 @@ class EmbedArtifact:
 
 
 def _fingerprint(value: Mapping[str, Any]) -> str:
-    normalized = deepcopy(dict(value))
+    normalized = dict(value)
     source = normalized.get("source")
-    if isinstance(source, dict) and source.get("kind") == "standalone":
+    if isinstance(source, Mapping) and source.get("kind") == "standalone":
         documents = source.get("documents")
         if isinstance(documents, list):
-            source["documents"] = [_normalize_model_ids(document) for document in documents]
-    normalized = _normalize_json_numbers(normalized)
-    payload = json.dumps(normalized, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            normalized["source"] = {
+                **source,
+                "documents": [_normalize_model_ids(document) for document in documents],
+            }
+    payload = canonical_json(normalized)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -311,25 +317,6 @@ def _normalize_model_ids(value: Any) -> Any:
         return child
 
     return replace(value)
-
-
-def _normalize_json_numbers(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {key: _normalize_json_numbers(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_normalize_json_numbers(item) for item in value]
-    # JSON.stringify() emits integral JavaScript numbers without a decimal
-    # suffix. Match that representation for cross-language fingerprints.
-    if isinstance(value, float) and value.is_integer():
-        return int(value)
-    return value
-
-
-def _json_copy(value: Any) -> Any:
-    try:
-        return json.loads(json.dumps(value, ensure_ascii=False))
-    except (TypeError, ValueError) as error:
-        raise ArtifactValidationError(f"embedding artifacts must be JSON-compatible: {error}") from error
 
 
 __all__ = (

@@ -200,16 +200,6 @@ class Test_bundle_ext_package_no_main:
         assert len(bundle.js_files) == 2
         assert len(bundle.js_raw) == 1
 
-#-----------------------------------------------------------------------------
-# Private API
-#-----------------------------------------------------------------------------
-
-class Test__any:
-    def test_with_models(self) -> None:
-        assert beb._any({plot(), table()}, lambda x: isinstance(x, models.Plot)) is True
-        assert beb._any({plot(), table()}, lambda x: isinstance(x, models.Button)) is False
-
-
 class Test__use_gl:
     def test_without_gl(self) -> None:
         assert beb._use_gl(beb._all_objs([plot()])) is False

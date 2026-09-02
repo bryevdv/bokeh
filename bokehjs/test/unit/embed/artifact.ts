@@ -428,6 +428,18 @@ describe("EmbedArtifact runtime", () => {
     expect(server.roots).to.be.equal([{key: "detail", model_id: "fixture-root"}])
   })
 
+  it("rejects non-finite and unsafe fingerprint numbers", async () => {
+    for (const value of [NaN, Infinity, 2**53, 1e20, 1e21]) {
+      const artifact = fixture("standalone-keyed-roots")
+      artifact.metadata = {value}
+      const error = await compute_embed_artifact_fingerprint(artifact).then(
+        () => null, (error: unknown) => error,
+      )
+      expect_instanceof(error, ArtifactError)
+      expect(error.message.includes("finite") || error.message.includes("safe integer")).to.be.true
+    }
+  })
+
   it("keeps envelope metadata outside model ID normalization", async () => {
     const actual = fixture("standalone-keyed-roots")
     if (actual.source.kind != "standalone") {
@@ -461,6 +473,35 @@ describe("EmbedArtifact runtime", () => {
       assets: [{kind: "bogus", content: "void 0"}],
     }]
     expect(() => validate_embed_artifact(malformed)).to.throw(ArtifactError, /kind must be 'script' or 'style'/)
+
+    const module_style = fixture("standalone-keyed-roots")
+    module_style.requires.extensions = [{
+      name: "bad-style",
+      assets: [{kind: "style", content: "body {}", module: true}],
+    }]
+    expect(() => validate_embed_artifact(module_style)).to.throw(ArtifactError, /style resources cannot be modules/)
+
+    const duplicate_components = fixture("standalone-keyed-roots")
+    duplicate_components.requires.components = ["bokeh/core", "bokeh/core"]
+    expect(() => validate_embed_artifact(duplicate_components)).to.throw(ArtifactError, /components must be unique/)
+
+    const duplicate_extensions = fixture("standalone-keyed-roots")
+    duplicate_extensions.requires.extensions = [
+      {name: "duplicate", assets: []},
+      {name: "duplicate", assets: []},
+    ]
+    expect(() => validate_embed_artifact(duplicate_extensions)).to.throw(ArtifactError, /duplicate.*extension/)
+
+    const multiple_documents = fixture("standalone-keyed-roots")
+    if (multiple_documents.source.kind != "standalone") {
+      throw new Error("expected standalone fixture")
+    }
+    multiple_documents.source.documents.push(structuredClone(multiple_documents.source.documents[0]))
+    expect(() => validate_embed_artifact(multiple_documents)).to.throw(ArtifactError, /exactly one document/)
+
+    const mixed_root = fixture("standalone-keyed-roots")
+    Object.assign(mixed_root.roots[0], {model_id: "not-structural"})
+    expect(() => validate_embed_artifact(mixed_root)).to.throw(ArtifactError, /cannot declare model_id/)
   })
 
   it("deduplicates concurrent and sequential additive resource loads", async () => {
@@ -481,6 +522,57 @@ describe("EmbedArtifact runtime", () => {
     expect(state.artifact_core).to.be.equal(1)
     expect(state.artifact_widgets).to.be.equal(1)
     expect(document.querySelectorAll("[data-bokeh-resource]").length).to.be.equal(2)
+  })
+
+  it("doesn't conflate inline resources that collided under the old 32-bit hash", async () => {
+    const loader = new ResourceLoader()
+    const state = globalThis as typeof globalThis & {artifact_collision?: number[]}
+    state.artifact_collision = []
+    const first = "globalThis.artifact_collision.push(416739)"
+    const second = "globalThis.artifact_collision.push(1029994)"
+
+    await loader.ensure(core, {mode: "resolved", assets: [
+      {kind: "script", content: first},
+      {kind: "script", content: second},
+    ]})
+
+    expect(state.artifact_collision).to.be.equal([416739, 1029994])
+  })
+
+  it("waits for existing loading resources and validates their declarations", async () => {
+    const loader = new ResourceLoader()
+    const state = globalThis as typeof globalThis & {artifact_existing?: number}
+    state.artifact_existing = 0
+    const content = "globalThis.artifact_existing += 1"
+    const url = `data:text/javascript,${encodeURIComponent(content)}`
+    const script = document.createElement("script")
+    script.src = url
+    script.dataset.bokehResource = "fixture"
+    script.dataset.bokehResourceState = "loading"
+    document.head.append(script)
+
+    await loader.ensure(core, {mode: "resolved", assets: [{kind: "script", url}]})
+    expect(state.artifact_existing).to.be.equal(1)
+    expect(script.dataset.bokehResourceState).to.be.equal("loaded")
+
+    loader.clear()
+    const conflict = await loader.ensure(core, {mode: "resolved", assets: [
+      {kind: "script", url, module: true},
+    ]}).then(() => null, (error: unknown) => error)
+    expect_instanceof(conflict, ResourceError)
+    expect(conflict.kind).to.be.equal("conflict")
+  })
+
+  it("awaits inline module evaluation", async () => {
+    const loader = new ResourceLoader()
+    const state = globalThis as typeof globalThis & {artifact_inline_module?: number}
+    state.artifact_inline_module = 0
+
+    await loader.ensure(core, {mode: "resolved", assets: [{
+      kind: "script", module: true, content: "globalThis.artifact_inline_module = 1",
+    }]})
+
+    expect(state.artifact_inline_module).to.be.equal(1)
   })
 
   it("treats resources none as host-owned without erasing requirements", async () => {
