@@ -48,6 +48,7 @@ from ..settings import settings
 from ..util.dataclasses import Unspecified, entries, is_dataclass
 from ..util.dependencies import uses_pandas
 from ..util.serialization import (
+    _reserve_id,
     array_encoding_disabled,
     convert_datetime_type,
     convert_timedelta_type,
@@ -546,6 +547,7 @@ class Deserializer:
         if self._decoding:
             return self._decode(obj)
 
+        self._reserve_model_ids(obj)
         self._decoding = True
 
         try:
@@ -553,6 +555,16 @@ class Deserializer:
         finally:
             self._buffers.clear()
             self._decoding = False
+
+    def _reserve_model_ids(self, obj: AnyRep) -> None:
+        if isinstance(obj, dict):
+            if obj.get("type") == "object" and isinstance(id := obj.get("id"), str):
+                _reserve_id(cast(ID, id))
+            for value in obj.values():
+                self._reserve_model_ids(value)
+        elif isinstance(obj, (list, tuple)):
+            for value in obj:
+                self._reserve_model_ids(value)
 
     def _decode(self, obj: AnyRep) -> Any:
         if isinstance(obj, dict):
