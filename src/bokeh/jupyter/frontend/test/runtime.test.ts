@@ -1,7 +1,7 @@
 import {beforeEach, describe, expect, it, vi} from "vitest"
 
 import {DisplayPayload, PROTOCOL_VERSION, ResourcePayload} from "../src/protocol"
-import {loadResources, renderDisplay, resetResourceRegistry} from "../src/runtime"
+import {currentDocumentSnapshot, loadResources, renderDisplay, resetResourceRegistry} from "../src/runtime"
 
 const artifact = {
   schema: "bokeh.embed/v1",
@@ -74,6 +74,11 @@ describe("artifact runtime", () => {
     expect(mount).toHaveBeenCalledOnce()
     const options = mount.mock.calls[0][1]
     expect([...options.targets.keys()]).toEqual(["first", "second"])
+    const snapshot = currentDocumentSnapshot(node, display)
+    expect(snapshot?.view_id).toBe("view")
+    const current = JSON.parse(snapshot?.artifact_json ?? "{}")
+    expect(current.fingerprint).toBeUndefined()
+    expect(current.metadata.notebook_export).toEqual({view_id: "view"})
     cleanup()
     cleanup()
     expect(dispose).toHaveBeenCalledOnce()

@@ -126,7 +126,8 @@ def _is_marimo_runtime() -> bool:
     if "marimo" not in sys.modules:
         return False
     try:
-        from marimo._runtime.context import runtime_context_installed  # pyright: ignore[reportMissingImports]
+        from marimo._runtime.context import \
+            runtime_context_installed  # pyright: ignore[reportMissingImports]
 
         return runtime_context_installed()
     except Exception:
@@ -160,6 +161,10 @@ def _require_marimo_anywidget() -> None:
             "Install Bokeh's notebook extra with 'pip install bokeh[notebook]'.",
         )
 
+def _comm_id(comm: Comm) -> str:
+    comm_id = getattr(comm, "comm_id", None)
+    return comm_id if isinstance(comm_id, str) and comm_id else str(id(comm))
+
 class DocumentViewHandle:
     '''A live artifact handle with one independent comm per frontend view.'''
 
@@ -186,11 +191,6 @@ class DocumentViewHandle:
             self._output_root_key = _claim_output_root(source_document, self._root)
         source_document.callbacks.on_change_dispatch_to(self)
 
-    @staticmethod
-    def _comm_id(comm: Comm) -> str:
-        comm_id = getattr(comm, "comm_id", None)
-        return comm_id if isinstance(comm_id, str) and comm_id else str(id(comm))
-
     def _connect(self, comm: Comm) -> None:
         if self._closed:
             comm.send({
@@ -200,7 +200,7 @@ class DocumentViewHandle:
             })
             comm.close()
             return
-        comm_id = self._comm_id(comm)
+        comm_id = _comm_id(comm)
         self._comms[comm_id] = comm
         on_close = getattr(comm, "on_close", None)
         if on_close is not None:
@@ -368,11 +368,6 @@ class ApplicationViewHandle:
         self._closed = False
         self._frontend: Any | None = None
 
-    @staticmethod
-    def _comm_id(comm: Comm) -> str:
-        comm_id = getattr(comm, "comm_id", None)
-        return comm_id if isinstance(comm_id, str) and comm_id else str(id(comm))
-
     def _connect(self, comm: Comm) -> None:
         if self._closed:
             comm.send({
@@ -382,7 +377,7 @@ class ApplicationViewHandle:
             })
             comm.close()
             return
-        comm_id = self._comm_id(comm)
+        comm_id = _comm_id(comm)
         self._comms[comm_id] = comm
         on_close = getattr(comm, "on_close", None)
         if on_close is not None:

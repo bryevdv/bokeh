@@ -29,6 +29,7 @@ export class NotebookExtension implements DocumentRegistry.IWidgetExtension<Note
   }
   createNew(panel: NotebookPanel, context: DocumentRegistry.IContext<INotebookModel>): IDisposable {
     const manager = new ContextManager(context, this.contents)
+    const proxy = kernelProxy(manager)
     this.managers.add(manager)
     panel.content.rendermime.addFactory({
       safe: true,
@@ -46,6 +47,15 @@ export class NotebookExtension implements DocumentRegistry.IWidgetExtension<Note
       createRenderer: (options) => new DisplayRenderer(options, manager),
     }, -20)
     let ownedViews = new Set<string>()
+    const releaseView = (viewId: string) => {
+      const owners = (this.viewOwners.get(viewId) ?? 1) - 1
+      if (owners === 0) {
+        this.viewOwners.delete(viewId)
+        void proxy.releaseView?.(viewId)
+      } else {
+        this.viewOwners.set(viewId, owners)
+      }
+    }
     const scanOwnership = () => {
       const current = new Set<string>()
       for (const cell of context.model.cells) {
@@ -59,19 +69,12 @@ export class NotebookExtension implements DocumentRegistry.IWidgetExtension<Note
           if (payload?.kind === "artifact" && typeof payload.view_id === "string") current.add(payload.view_id)
         }
       }
-      const proxy = kernelProxy(manager)
       for (const viewId of current) {
         if (!ownedViews.has(viewId)) this.viewOwners.set(viewId, (this.viewOwners.get(viewId) ?? 0) + 1)
       }
       for (const viewId of ownedViews) {
         if (current.has(viewId)) continue
-        const owners = (this.viewOwners.get(viewId) ?? 1) - 1
-        if (owners === 0) {
-          this.viewOwners.delete(viewId)
-          void proxy.releaseView?.(viewId)
-        } else {
-          this.viewOwners.set(viewId, owners)
-        }
+        releaseView(viewId)
       }
       ownedViews = current
       manager.setOwnedViews(current)
@@ -79,7 +82,6 @@ export class NotebookExtension implements DocumentRegistry.IWidgetExtension<Note
     const watched = new Map<ICodeCellModel, {outputs: () => void, trust: (_sender: ICellModel, args: {name: string, newValue: unknown}) => void}>()
     const scanCell = (cell: ICodeCellModel) => {
       if (manager.isDisposed || !cell.trusted || !cell.outputs.trusted) return
-      const kernel = kernelProxy(manager)
       for (let index = 0; index < cell.outputs.length; index++) {
         const output = cell.outputs.get(index)
         if (output.trusted === false) continue
@@ -90,7 +92,7 @@ export class NotebookExtension implements DocumentRegistry.IWidgetExtension<Note
             payload,
             typeof fallback === "string" ? fallback : "",
             document.createElement("div"),
-            kernel,
+            proxy,
           ).catch(() => undefined)
         }
       }
@@ -141,15 +143,8 @@ export class NotebookExtension implements DocumentRegistry.IWidgetExtension<Note
       const previous = ownedViews
       ownedViews = new Set()
       manager.setOwnedViews(ownedViews)
-      const proxy = kernelProxy(manager)
       for (const viewId of previous) {
-        const owners = (this.viewOwners.get(viewId) ?? 1) - 1
-        if (owners === 0) {
-          this.viewOwners.delete(viewId)
-          void proxy.releaseView?.(viewId)
-        } else {
-          this.viewOwners.set(viewId, owners)
-        }
+        releaseView(viewId)
       }
       this.managers.delete(manager)
       manager.dispose()
