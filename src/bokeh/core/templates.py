@@ -7,10 +7,7 @@
 ''' Provide Jinja2 templates used by Bokeh to embed Bokeh documents and
 models in various ways.
 
-.. bokeh-jinja:: bokeh.core.templates.AUTOLOAD_JS
 .. bokeh-jinja:: bokeh.core.templates.AUTOLOAD_NB_JS
-.. bokeh-jinja:: bokeh.core.templates.AUTOLOAD_REQUEST_TAG
-.. bokeh-jinja:: bokeh.core.templates.AUTOLOAD_TAG
 .. bokeh-jinja:: bokeh.core.templates.CSS_RESOURCES
 .. bokeh-jinja:: bokeh.core.templates.DOC_NB_JS
 .. bokeh-jinja:: bokeh.core.templates.FILE
@@ -57,10 +54,7 @@ __all__ = (
     "FILE",
     "MACROS",
     "NOTEBOOK_LOAD",
-    "AUTOLOAD_JS",
     "AUTOLOAD_NB_JS",
-    "AUTOLOAD_TAG",
-    "AUTOLOAD_REQUEST_TAG",
 )
 
 #-----------------------------------------------------------------------------
@@ -100,10 +94,7 @@ DOC_NB_JS: Template
 FILE: Template
 MACROS: Template
 NOTEBOOK_LOAD: Template
-AUTOLOAD_JS: Template
 AUTOLOAD_NB_JS: Template
-AUTOLOAD_TAG: Template
-AUTOLOAD_REQUEST_TAG: Template
 
 _templates: dict[str, Callable[[], Template]] = dict(
     JS_RESOURCES=lambda: get_env().get_template("js_resources.html.jinja"),
@@ -114,10 +105,7 @@ _templates: dict[str, Callable[[], Template]] = dict(
     FILE=lambda: get_env().get_template("file.html.jinja"),
     MACROS=lambda: get_env().get_template("macros.html.jinja"),
     NOTEBOOK_LOAD=lambda: get_env().get_template("notebook_load.html.jinja"),
-    AUTOLOAD_JS=lambda: get_env().get_template("autoload_js.js.jinja"),
     AUTOLOAD_NB_JS=lambda: get_env().get_template("autoload_nb_js.js.jinja"),
-    AUTOLOAD_TAG=lambda: get_env().get_template("autoload_tag.html.jinja"),
-    AUTOLOAD_REQUEST_TAG=lambda: get_env().get_template("autoload_request_tag.html.jinja"),
 )
 
 @lru_cache(None)
