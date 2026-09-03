@@ -21,10 +21,7 @@ log = logging.getLogger(__name__)
 #-----------------------------------------------------------------------------
 
 # Standard library imports
-from typing import (
-    Iterator,
-    Sequence,
-)
+from typing import Iterator, Sequence
 
 # Bokeh imports
 from ..core.has_props import HasProps
